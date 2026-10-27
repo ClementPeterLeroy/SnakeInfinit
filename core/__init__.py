@@ -1,0 +1,1 @@
+"""Rendering-independent Snake simulation."""

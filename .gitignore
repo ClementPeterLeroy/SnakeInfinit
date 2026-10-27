@@ -1,0 +1,8 @@
+__pycache__/
+.pytest_cache/
+.venv/
+.uv-cache/
+.artifacts/
+pytest-cache-files-*/
+*.py[cod]
+settings.json
