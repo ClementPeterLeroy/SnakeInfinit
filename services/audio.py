@@ -14,20 +14,35 @@ class AudioManager:
         self.music_paused = False
         self.music_path = ROOT / "assets" / "snd" / "synth_wave_background.wav"
         self.sounds = {}
+        self.voices = {}
+        self.counts = {}
+        self.game_score = 0
+        self.suspended = False
         try:
             if not pygame.mixer.get_init():
                 pygame.mixer.init()
             self.ready = True
+            pygame.mixer.set_reserved(2)
+            self.announcement_channel = pygame.mixer.Channel(0)
         except (pygame.error, OSError) as error:
             logging.warning("Audio unavailable: %s", error)
             return
         for event, name in ((GameEvent.ATE, "eating_apple.wav"),
-                            (GameEvent.LOST, "game_over.wav")):
+                            (GameEvent.LOST, "game_over.wav"),
+                            (GameEvent.STAR, "eating_star.wav")):
             try:
                 self.sounds[event] = pygame.mixer.Sound(ROOT / "assets" / "snd" / name)
                 self.sounds[event].set_volume(0.65)
             except (pygame.error, OSError) as error:
                 logging.warning("Sound unavailable: %s", error)
+        for table, entries in ((self.voices, (("super", "super_voice.wav"), ("lost", "game_over_voice.wav"))),
+                               (self.counts, tuple((word, word.lower().replace("!", "") + ".wav")
+                                                  for word in ("3", "2", "1", "GO!")))):
+            for key, name in entries:
+                try:
+                    table[key] = pygame.mixer.Sound(ROOT / "assets" / "snd" / name)
+                except (pygame.error, OSError) as error:
+                    logging.warning("Announcement unavailable (%s): %s", name, error)
         try:
             pygame.mixer.music.load(self.music_path)
             pygame.mixer.music.set_volume(0.3)
@@ -43,9 +58,11 @@ class AudioManager:
             if not self.settings.sound_effects:
                 for sound in self.sounds.values():
                     sound.stop()
+            if not self.settings.voice_announcements:
+                self.announcement_channel.stop()
             if not self.music_loaded:
                 return
-            if self.settings.music:
+            if self.settings.music and not self.suspended:
                 if not self.music_started:
                     pygame.mixer.music.play(-1)
                     self.music_started = True
@@ -63,13 +80,48 @@ class AudioManager:
         self.ready = False
 
     def handle(self, events):
-        if self.ready and pygame.mixer.get_init() and self.settings.sound_effects:
+        if self.ready and pygame.mixer.get_init():
             try:
                 for event in events:
-                    if event in self.sounds:
+                    if event == GameEvent.SUPER:
+                        self.announce("super")
+                    low_death = event == GameEvent.LOST and self.game_score < 20
+                    if low_death and self.announce("lost"):
+                        continue
+                    if event in self.sounds and self.settings.sound_effects:
                         self.sounds[event].play()
             except (pygame.error, OSError) as error:
                 self._disable(error)
+
+    def announce(self, name):
+        if not self.ready or not self.settings.voice_announcements or name not in self.voices:
+            return False
+        try:
+            self.announcement_channel.stop()
+            self.announcement_channel.play(self.voices[name])
+            return True
+        except pygame.error as error:
+            self._disable(error)
+            return False
+
+    def countdown(self, word):
+        self.stop_announcements()
+        if self.ready and self.settings.sound_effects and word in self.counts:
+            try:
+                self.announcement_channel.play(self.counts[word])
+            except pygame.error as error:
+                self._disable(error)
+
+    def stop_announcements(self):
+        if self.ready and pygame.mixer.get_init():
+            try:
+                self.announcement_channel.stop()
+            except pygame.error as error:
+                self._disable(error)
+
+    def suspend_music(self, suspended):
+        self.suspended = suspended
+        self.apply_settings()
 
     def close(self):
         if pygame.mixer.get_init():

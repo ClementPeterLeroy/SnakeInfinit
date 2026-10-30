@@ -49,6 +49,15 @@ def test_mouse_navigation_and_resized_coordinate_mapping(app):
                 round(view.y + 325 * view.height / 720))
     app.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=position))
     app.handle_event(pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=position))
+    assert app.screen == "modes"
+    # SOLO now opens mode selection; verify the same resized mouse mapping there.
+    position = (round(view.x + 640 * view.width / 1280),
+                round(view.y + 303 * view.height / 720))
+    app.handle_event(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=position))
+    app.handle_event(pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=position))
+    assert app.screen == "countdown"
+    for _ in range(3):
+        app.update(1)
     assert app.screen == "game"
     for screen in ("game", "pause", "over", "menu", "settings", "ai"):
         app.action(screen)

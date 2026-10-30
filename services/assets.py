@@ -31,3 +31,11 @@ class AssetManager:
         if len(self.scaled) > 64:
             self.scaled.popitem(last=False)
         return result
+
+    def fit(self, name, bounds):
+        """Fit supplied artwork inside a rectangle without cropping or distortion."""
+        source = self.image(name, max(bounds))
+        if source is None:
+            return None
+        rect = source.get_rect().fit(pygame.Rect((0, 0), bounds))
+        return pygame.transform.smoothscale(source, rect.size)

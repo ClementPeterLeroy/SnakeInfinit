@@ -14,6 +14,7 @@ class Settings:
     sound_effects: bool = True
     animations: bool = True
     speed: str = "NORMAL"
+    voice_announcements: bool = True
 
 
 def default_path() -> Path:
@@ -33,7 +34,7 @@ class SettingsStore:
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
-                for key in ("music", "sound_effects", "animations"):
+                for key in ("music", "sound_effects", "animations", "voice_announcements"):
                     if type(raw.get(key)) is bool:
                         setattr(settings, key, raw[key])
                 if isinstance(raw.get("speed"), str) and raw["speed"] in SPEEDS:
@@ -59,4 +60,7 @@ class SettingsStore:
             return False
         finally:
             if temporary is not None:
-                temporary.unlink(missing_ok=True)
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError as error:
+                    logging.warning("Could not clean temporary settings file: %s", error)
