@@ -10,6 +10,8 @@ class Snake:
     pending: Direction | None = field(default=None, init=False)
 
     def turn(self, direction: Direction) -> bool:
+        if not isinstance(direction, Direction):
+            raise TypeError("Direction must be a Direction enum value")
         dx, dy = self.direction.value
         if self.pending is not None or direction == self.direction:
             return False

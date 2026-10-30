@@ -22,7 +22,7 @@ def draw(surface):
     backdrop(surface, "S N A K E  /  PREFERENCES", "SETTINGS", "Make yourself at home.")
     for index, (title, hint) in enumerate((("Music", "Background soundtrack"),
                                           ("Sound effects", "Apple and game-over feedback"),
-                                          ("Animations", "Subtle button transitions"))):
+                                          ("Animations", "Buttons, overlays and apple feedback"))):
         y = 259 + index * 77
         label(surface, title, (344, y), 23, center=False)
         label(surface, hint, (344, y + 32), 15, MUTED, False)

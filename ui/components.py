@@ -18,6 +18,8 @@ def reset_fonts():
 
 def font(size):
     if size not in _fonts:
+        if len(_fonts) >= 128:
+            _fonts.pop(next(iter(_fonts)))
         _fonts[size] = pygame.font.SysFont("segoeui,dejavusans,arial", size)
     return _fonts[size]
 
@@ -38,7 +40,7 @@ class Button:
 
     def draw(self, surface, mouse, dt, animations, pressed=False):
         target = float(self.rect.collidepoint(mouse))
-        self.hover = min(1, self.hover + dt * 9) if target else max(0, self.hover - dt * 9)
+        self.hover = (min(1, self.hover + dt * 9) if target else max(0, self.hover - dt * 9)) if animations else target
         amount = self.hover if animations else target
         base = (97, 198, 129) if self.primary else PANEL
         color = tuple(min(255, int(value + amount * 15)) for value in base)

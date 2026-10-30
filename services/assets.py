@@ -1,5 +1,6 @@
 """Safe, aspect-preserving image loading with size caching."""
 import logging
+from collections import OrderedDict
 import pygame
 from core.config import ROOT
 
@@ -7,11 +8,12 @@ from core.config import ROOT
 class AssetManager:
     def __init__(self):
         self.originals = {}
-        self.scaled = {}
+        self.scaled = OrderedDict()
 
     def image(self, name: str, size: int) -> pygame.Surface | None:
         key = (name, size)
         if key in self.scaled:
+            self.scaled.move_to_end(key)
             return self.scaled[key]
         if name not in self.originals:
             try:
@@ -26,4 +28,6 @@ class AssetManager:
             dimensions = tuple(max(1, round(value * ratio)) for value in source.get_size())
             result = pygame.transform.smoothscale(source, dimensions)
         self.scaled[key] = result
+        if len(self.scaled) > 64:
+            self.scaled.popitem(last=False)
         return result
