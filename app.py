@@ -1,6 +1,8 @@
 """Application state, input routing, and fixed-timestep scheduling."""
 import argparse
 import logging
+import queue
+import threading
 from pathlib import Path
 import pygame
 from core.game import Game
@@ -70,11 +72,20 @@ class Application:
         self.timing_epoch = 0
         self.pressed = None
         self.controls = []
+        self.lab_view = None
+        self.lab_queue = queue.Queue()
+        self.lab_thread = None
+        self.lab_error = ""
         self.rebuild_controls()
 
     def rebuild_controls(self):
         if self.screen in ("menu", "ai"):
             self.controls = menu.buttons(self.screen == "ai")
+        elif self.screen == "neural":
+            self.controls = self.lab_view.buttons
+        elif self.screen in ("neural_loading", "neural_unavailable", "training"):
+            from ui.components import button
+            self.controls = [button("BACK TO AI", 500, 550, 280, "ai")]
         elif self.screen == "settings":
             self.controls = settings_view.buttons(self.settings)
         elif self.screen in ("pause", "over"):
@@ -92,15 +103,28 @@ class Application:
         self.pressed = None
 
     def action(self, action):
+        if self.screen == "neural" and not action.startswith("lab:") and self.lab_view:
+            self.lab_view.pause("Live paused / laboratory left")
         self.accumulator = 0
-        self.timing_epoch += 1
+        if action not in ("lab:layer", "lab:select_neuron", "lab:bias"):
+            self.timing_epoch += 1
         if action in ("pause", "resume", "start", "menu", "play") or action.startswith("play:"):
             self.queued_turn = None
         if action == "pause" and self.game is not None:
             self.game.snake.pending = None
         if action in ("pause", "over"):
             self.feedback.enter_overlay()
-        if action == "exit":
+        if action.startswith("lab:"):
+            command = action.split(":", 1)[1]
+            if command == "back":
+                self.lab_view.pause("Live paused / laboratory left")
+                pygame.key.stop_text_input()
+                self.screen = "ai"
+            else:
+                self.lab_view.action(command)
+        elif action == "open_neural":
+            self.open_neural()
+        elif action == "exit":
             self.finish_session()
             self.running = False
         elif action == "challenge_page":
@@ -154,6 +178,28 @@ class Application:
                 pygame.key.stop_text_input()
             self.screen = action
         self.rebuild_controls()
+
+    def open_neural(self):
+        from ai.runtime import torch_available
+        if self.lab_view is not None:
+            self.lab_view.live.stop()
+            self.lab_view.layout()
+            self.screen = "neural"
+        elif not torch_available():
+            self.lab_error = "PyTorch is optional. Install requirements-ai.txt to enable this laboratory."
+            self.screen = "neural_unavailable"
+        else:
+            self.screen = "neural_loading"
+            if self.lab_thread is None:
+                def load():
+                    try:
+                        from ai.laboratory import Laboratory
+                        self.lab_queue.put((True, Laboratory()))
+                    except Exception as error:
+                        logging.exception("Optional neural runtime could not load")
+                        self.lab_queue.put((False, str(error)))
+                self.lab_thread = threading.Thread(target=load, daemon=True, name="neural-runtime")
+                self.lab_thread.start()
 
     def begin_game(self, *, countdown):
         self.audio.stop_announcements()
@@ -217,6 +263,14 @@ class Application:
                 (position[1] - view.y) * 720 / view.height)
 
     def handle_event(self, event):
+        if self.screen == "neural":
+            if event.type == pygame.WINDOWFOCUSLOST:
+                self.lab_view.pause("Live paused / window focus lost")
+                self.controls = self.lab_view.buttons
+            position = self.mouse_position(getattr(event, "pos", pygame.mouse.get_pos()))
+            if self.lab_view.handle_event(event, position):
+                self.controls = self.lab_view.buttons
+                return
         if event.type == pygame.QUIT:
             self.running = False
         elif event.type == pygame.WINDOWFOCUSLOST and self.screen in ("game", "countdown"):
@@ -233,7 +287,9 @@ class Application:
                     self.player_name = self.player_name[:-1]
                 return
             if event.key == pygame.K_ESCAPE:
-                if self.screen in ("game", "countdown"):
+                if self.screen in ("neural", "neural_loading", "neural_unavailable", "training"):
+                    self.action("ai")
+                elif self.screen in ("game", "countdown"):
                     self.action("pause")
                 elif self.screen == "pause":
                     self.action("resume")
@@ -255,6 +311,30 @@ class Application:
                 self.action(action)
 
     def update(self, dt):
+        if self.screen == "neural":
+            self.lab_view.update(dt)
+            self.controls = self.lab_view.buttons
+            return
+        if self.screen == "neural_loading":
+            try:
+                success, result = self.lab_queue.get_nowait()
+            except queue.Empty:
+                return
+            if success:
+                try:
+                    from ui.neural_view import NeuralView
+                    self.lab_view = NeuralView(result, self.store.path.parent / "models")
+                    self.screen = "neural"
+                except Exception as error:
+                    logging.exception("Neural interface could not initialize")
+                    self.lab_error = str(error)
+                    self.screen = "neural_unavailable"
+            else:
+                self.lab_error = str(result)
+                self.screen = "neural_unavailable"
+            self.lab_thread = None
+            self.rebuild_controls()
+            return
         if self.screen == "intro":
             if self.video.update(dt):
                 logging.info("Startup finished; outcome=%s; transitioning to main menu", "fallback" if getattr(self.video, "error", None) else "played")
@@ -324,6 +404,18 @@ class Application:
             self.canvas.fill((0, 0, 0, 0))
         elif self.screen in ("menu", "ai"):
             menu.draw(self.canvas, self.screen == "ai", self.assets)
+        elif self.screen == "neural":
+            self.lab_view.draw(self.canvas)
+        elif self.screen in ("neural_loading", "neural_unavailable", "training"):
+            from ui.components import backdrop
+            title = {"neural_loading": "LOADING NEURAL LABORATORY", "neural_unavailable": "AI DEPENDENCIES REQUIRED",
+                     "training": "TRAINING / COMING IN v1.4"}[self.screen]
+            backdrop(self.canvas, "SNAKE INFINITE / ARTIFICIAL INTELLIGENCE", title)
+            message = self.lab_error if self.screen == "neural_unavailable" else (
+                "Loading the optional CPU PyTorch runtime..." if self.screen == "neural_loading"
+                else "First Intelligence: Deep Q-Learning is the next milestone.")
+            for index in range(0, len(message), 95):
+                label(self.canvas, message[index:index + 95], (640, 320 + index // 95 * 28), 18, MUTED)
         elif self.screen == "settings":
             settings_view.draw(self.canvas)
         elif self.screen == "modes":
@@ -375,9 +467,10 @@ class Application:
         try:
             self.start_intro()
             while self.running:
-                # Limit a stalled frame's catch-up to keep the UI responsive.
+                # Arcade retains its catch-up cap; the lab owns a bounded scheduler
+                # that accounts for full elapsed time and explicitly reports stalls.
                 elapsed = self.clock.tick(120) / 1000
-                dt = elapsed if self.screen == "intro" else min(elapsed, 0.25)
+                dt = elapsed if self.screen in ("intro", "neural") else min(elapsed, 0.25)
                 before = self.timing_epoch
                 for event in pygame.event.get():
                     self.handle_event(event)

@@ -1,1 +1,1 @@
-"""Reserved namespace for future AI experiments."""
+"""Neural Foundations; optional Torch modules load only when explicitly requested."""

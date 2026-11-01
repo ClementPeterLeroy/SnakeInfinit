@@ -1,11 +1,159 @@
 # SNAKE INFINITE
 
-**v1.2.1 — Startup Repair & Windows Release**
+**v1.3.0 — Neural Foundations**
 
 A minimalist Python/Pygame arcade game with Classic, Arcade, five challenges,
 official startup branding, and local records. Built on the existing v1.0/v1.1
-architecture. No automated snakes, neural networks, or training dependencies.
-This maintenance version preserves the definitive V1.2 challenge mechanics.
+architecture. The optional CPU PyTorch Neural Laboratory adds configurable networks,
+real neuron inspection, manual parameter edits, Step and Live simulation, and a
+supervised gradient demo.
+Classic, Arcade, and the definitive V1.2 challenges keep their existing rules.
+Live play uses the current untrained weights. There is no DQN, replay buffer,
+automatic episode restart, or reinforcement-learning training.
+
+## Neural Laboratory
+
+Install the optional dependencies into the **same Python environment that runs
+main.py**. Ordinary arcade play needs only `requirements.txt`.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-ai.txt --index-url https://download.pytorch.org/whl/cpu
+# For an existing environment without pip:
+uv pip install --python .venv/Scripts/python.exe -r requirements-ai.txt --index-url https://download.pytorch.org/whl/cpu
+.\.venv\Scripts\python.exe main.py
+```
+
+Choose **AI → NEURAL LABORATORY**. PyTorch loads on demand in a worker; startup and
+the arcade screens never import it. Missing or broken AI dependencies show an
+explanation while all ordinary modes remain available. Computation uses CPU
+float32 tensors. Local verification used PyTorch 2.15.0+cpu on Python 3.13.
+
+The default fully connected `torch.nn.Module` is **11 → 16 → 8 → 3**, with **355
+trainable parameters**, counted from the actual model. Configuration allows 1–5
+hidden layers, 2–128 neurons each, an optional initialization seed, and ReLU, Tanh,
+Sigmoid, or Leaky ReLU (negative slope 0.01). Hidden layers use that activation;
+the final layer is linear. Building asks before replacing current weights and
+resets optimizer state. Initialization preserves the caller's Torch RNG stream.
+
+The exact 11 binary inputs, in order, are:
+
+1. Danger straight.
+2. Danger right.
+3. Danger left.
+4. Moving up.
+5. Moving down.
+6. Moving left.
+7. Moving right.
+8. Food above.
+9. Food below.
+10. Food left.
+11. Food right.
+
+The pure-Python encoder reads an immutable snapshot, detects Classic walls/body
+collisions, and allows entering a vacating tail unless growth prevents it. A
+buffered heading is treated as committed without consuming it. Food flags use
+the ordinary apple; terminal states remain inspectable and absent food produces
+four zeros. This first observation model is **Classic only**: stars and challenge
+hazards are deliberately excluded. Multiple food-direction flags may be active.
+
+The **three raw outputs** are **Straight, Turn left, Turn right**, in that order.
+They are untrained numbers, not probabilities, learned preferences, or meaningful
+Q-values yet. The order of relative actions differs from the danger feature order.
+
+Laboratory controls:
+
+| Control | Effect |
+| --- | --- |
+| Reset environment | New separate Classic game; seed blank for fresh randomness, integer for repeatability |
+| Step | Exactly one straight movement tick |
+| Forward pass | Recompute current inputs without moving Snake |
+| Relative action selector / Apply action | Select Straight/Left/Right, then advance exactly one tick |
+| Network action / UNTRAINED (Step Mode) | One user-requested argmax action from the current inputs |
+| Eleven input buttons | Toggle binary features for experiments; values need not describe a physically possible board |
+| Restore Snake observation | Replace manual values with the current real game snapshot |
+| Step Mode / Live Mode | Switch operating modes without resetting the board; Step is the default on entry |
+| Play / Pause (Live Mode) | Continuous argmax control from real Snake observations; pause preserves the state and decision |
+| Stop | Return to Step Mode, preserving the current environment |
+| Speed | Cycle 1, 3, 5, 10, 20 steps/second; default 5 |
+| Reset / Reset & Play Again | Reset with the seed field; after game over, explicitly begin a new live session |
+| Inspect last decision | Pause and show the latest pre-action observation, activations, outputs and parameters |
+| Current State / Forward | Pause and inspect a fresh post-action observation without movement |
+
+Stepping or resetting also restores the real Snake observation. The lab game
+does not affect the player's game, audio events, leaderboards, or statistics.
+Outputs display the current value and change from the preceding forward pass.
+
+**Live Mode** runs inside the ordinary application loop. For every movement tick,
+it extracts the real Classic observation, makes one CPU forward pass, chooses the
+highest raw output (ties select the first), and steps the existing game once.
+Manual observations never control live play. The output panel shows all three
+values to four decimal places, highlights the argmax, and names the selected action.
+An untrained network may circle or die quickly; this is expected.
+
+**Decision inspection:** the graph, inputs, output panel and neuron inspector
+share an immutable **LAST DECISION / PRE-ACTION** snapshot. It includes the
+observation, hidden/output activations, actual weights/biases, selected action,
+and states before/after movement. The adjacent **POST-ACTION BOARD** shows where
+the Snake moved. These are explicitly different moments. Pause and Stop preserve
+the snapshot; **Current State / Forward** or **Restore Snake Observation** switches
+to the current board's inputs. **Inspect Last Decision** restores the retained
+decision. Editing inputs/parameters pauses execution and shows a refreshed current
+calculation; replacing or updating weights clears the historical decision.
+
+Live timing uses a separate accumulator, independent of rendering FPS. Each frame
+performs at most eight movement/inference ticks, retaining ordinary catch-up work.
+A stall producing more than five seconds of backlog pauses execution and explicitly
+reports the canceled backlog; Play starts a fresh clock. Paused time never accrues.
+Mode changes, resets, and speed changes clear fractional timing to prevent bursts;
+changing speed with pending whole ticks also pauses and reports cancellation.
+Changing tabs, leaving the lab, losing window focus, or beginning a numeric edit
+pauses live play. Resizing remains interactive. Game over preserves the final
+board, decision, score, step count, and cause of death. There is no automatic restart.
+
+Click graph neurons, or use **Layer / Next** and **Select index** (zero-based),
+to inspect every actual neuron. The inspector shows real incoming inputs and
+weights, bias, `z = sum(w*x) + b`, activation, and final output. Scroll over the
+inspector to reach every incoming connection. Click a weight row or **Bias**, edit
+its value, then **Apply edit**. Edits run under `torch.no_grad()`, refresh the
+forward capture, reset Adam state, and gain a `*` marker. Parameters must be finite
+and within ±1e6; updates that overflow the network are rejected and rolled back.
+Large layers show at most 16 explicitly labeled groups and representative links;
+the inspector always shows exact individual values.
+
+Activation intensity uses the fixed normalization `tanh(abs(a))`, without rescaling
+between frames: zero is dark green, positive values become brighter emerald,
+negative values use muted purple. Grouped nodes show the mean activation of their
+members. The argmax output has a green ring. Static signed connection artwork is
+cached for each displayed capture/geometry; selection and dynamic nodes remain
+interactive without rebuilding connections on every rendered frame.
+
+Numeric fields accept typing, Backspace, Enter to finish, Ctrl+A to clear, and
+Escape to leave editing. Escape also cancels confirmation dialogs or returns to
+the AI menu. The interface scales with the existing application viewport.
+
+**Gradient demo:** supply three target numbers and a learning rate (default
+0.001, greater than zero and at most 1), then click **1. Backpropagate**. The model
+clears old gradients, calculates mean squared error, and calls `loss.backward()`.
+Select any weight or bias to inspect its gradient. **2. Optimizer step** applies
+one Adam update, refreshes outputs, and displays MSE before/after. Gradients from
+that backward pass remain available as an explicitly labeled snapshot; another
+update requires another backward pass. Changing inputs, environment, or parameters
+invalidates pending gradients. This supervised example is **not DQN**, and its
+targets are educational values, not optimal Snake actions. Adam is not guaranteed
+to reduce loss on every user-chosen example or learning rate.
+
+**Models:** enter a local name and save, or select an existing model and load.
+Overwrite and load both require confirmation. JSON stores architecture, seed,
+feature/action contracts, version, update count, and manual-edit markers. A separate
+PyTorch state dictionary stores parameters; a checksum detects accidental changes.
+Loading validates bounds, shape, dtype, finite values, and compatibility, using
+[`weights_only=True`](https://docs.pytorch.org/docs/stable/notes/serialization.html)
+with no unsafe fallback. Load only trusted local models; a checksum does not prove
+authenticity. Optimizer state and the live environment are not saved. Files live in
+`%LOCALAPPDATA%/SnakeInfinite/models/` (or the existing platform profile); a custom
+`--settings` path puts models beside that settings file. Bundled assets stay read-only.
+
+See the [v1.3 release notes](docs/releases/v1.3.0.md) for verification and limitations.
 
 ## Windows application
 
@@ -13,6 +161,14 @@ Launch `dist/release/SnakeInfinite/SnakeInfinite.exe`. Keep the **entire
 SnakeInfinite folder**, including `_internal`, together when copying it. This is
 a standalone Windows x64 onedir build; it does not require a separate Python
 installation. Validation on a clean machine without Python is still recommended.
+
+Existing `dist/` executables from v1.2.1 are not updated by source changes. Rebuild
+to obtain the new arcade menu/version. The existing spec explicitly excludes
+PyTorch and NumPy: the lightweight executable intentionally shows the dependency
+explanation for the lab. Installing Torch into a separate Python does not add it
+to a frozen executable. Run from source for the functional lab in v1.3. A future
+separate AI-enabled Windows onedir build would need its own spec, CPU Torch/native
+libraries and licenses, a larger download, and independent clean-machine testing.
 
 The official video plays once before the menu, preserving its aspect ratio.
 The supplied file is `assets/px/SnakeInfinite_Startup.mp4`; the resolver also
@@ -243,7 +399,16 @@ tools/validate_windows_build.py  external-cwd executable validation
 SnakeInfinite.spec      Windows onedir packaging configuration
 build_windows.ps1       diagnostic and console-free release builds
 tests/                  earlier coverage plus Arcade and integration tests
-agents/, ai/            documented future extension points
+ai/
+  observations.py, actions.py, config.py  pure observation/action/config contracts
+  network.py             optional CPU Torch model and real layer captures
+  laboratory.py          separate step-based game and staged supervised demo
+  live.py                nonblocking live scheduler and immutable decision snapshots
+  persistence.py         validated JSON + weights-only model storage
+  runtime.py             availability probe without importing Torch
+ui/neural_view.py        configuration, inspector, editing, gradients, model library
+ui/neural_graph.py       bounded individual/grouped activation rendering
+agents/                  future learning controllers; untrained live control is in ai/live.py
 assets/                 original artwork, video, sounds, and derived ICO
 ```
 
@@ -297,5 +462,15 @@ Dummy-device tests verify rendering/routing without proving audible output.
 `--smoke-test` renders three frames and exits with decoder cleanup; normal startup
 plays the complete video.
 
-Next: **v1.3 — Neural Foundations**, introducing configurable PyTorch neural
-networks. No PyTorch, DQN, training, or automated agents are included in v1.2.
+Neural tests cover observations, tail movement, seeded initialization, 355 actual
+parameters, every supported activation and layer bound, exact calculations, edits,
+gradient reset/update, persistence corruption, and Pygame control flows. Torch
+test modules explicitly skip when the optional dependency is absent. Compatibility
+checks also run arcade modes with Torch imports forbidden.
+Live tests cover inference-before-movement, one forward per step, FPS-independent
+speed, pause/resume/stop/reset, snapshot accuracy, bounded catch-up, game-over,
+tab/focus transitions, resized controls and quit handling.
+
+Next: **v1.4 — First Intelligence**, introducing Deep Q-Learning. Reinforcement
+learning, replay buffers, automated training episodes, trained policies, and spectator
+tools remain outside v1.3.
