@@ -38,6 +38,7 @@ class Button:
     primary: bool = False
     hover: float = 0
     text_size: int = 19
+    subtitle: str | None = None
 
     def draw(self, surface, mouse, dt, animations, pressed=False):
         target = float(self.rect.collidepoint(mouse))
@@ -50,7 +51,10 @@ class Button:
         pygame.draw.rect(surface, color, self.rect, border_radius=10)
         if not self.primary:
             pygame.draw.rect(surface, GREEN if target else BORDER, self.rect, 1, border_radius=10)
-        label(surface, self.text, self.rect.center, self.text_size, BG if self.primary else TEXT)
+        position=(self.rect.centerx,self.rect.centery-9) if self.subtitle else self.rect.center
+        label(surface, self.text, position, self.text_size, BG if self.primary else TEXT)
+        if self.subtitle:
+            label(surface,self.subtitle,(self.rect.centerx,self.rect.centery+15),13,BG if self.primary else MUTED)
 
 
 def button(text, x, y, width, action, primary=False):

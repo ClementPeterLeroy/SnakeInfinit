@@ -1,1 +1,1 @@
-"""Neural Foundations; optional Torch modules load only when explicitly requested."""
+"""First Intelligence; optional Torch modules load only when explicitly requested."""

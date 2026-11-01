@@ -183,3 +183,85 @@ def test_inference_uses_custom_current_state_without_resetting_it():
     assert live.decision.before == state
     assert live.decision.observation[8] == 1
     assert live.lab.game.snake.body[0] == (5, 6)
+
+
+def test_unmodified_default_live_decisions_refresh_and_move_once(monkeypatch):
+    """Audit the actual default weights, not a network forced to choose one action."""
+    from unittest.mock import Mock
+    import ai.live as live_module
+    live = LiveController(Laboratory())
+    encode = Mock(wraps=live_module.encode_observation)
+    capture = Mock(wraps=live.lab.network.capture)
+    move = Mock(wraps=live.lab.game.step)
+    monkeypatch.setattr(live_module, 'encode_observation', encode)
+    monkeypatch.setattr(live.lab.network, 'capture', capture)
+    monkeypatch.setattr(live.lab.game, 'step', move)
+    parameters = [p.detach().clone() for p in live.lab.network.parameters()]
+    live.play()
+    for index in range(20):
+        before = live.lab.game.get_state()
+        assert live.advance(.2) == 1
+        decision = live.decision
+        assert encode.call_count == capture.call_count == move.call_count == index + 1
+        assert encode.call_args.args == (before,)
+        assert capture.call_args.args == (encode_observation(before),)
+        assert decision.before == before and decision.after == live.lab.game.get_state()
+        with torch.no_grad():
+            expected = live.lab.network(torch.tensor(encode_observation(before), dtype=torch.float32))
+        assert decision.outputs == pytest.approx(expected.tolist())
+        assert decision.action == expected.argmax().item()
+        assert decision.after.snake == (decision.after.snake[0], *before.snake[:-1])
+        assert decision.after.elapsed - before.elapsed == pytest.approx(before.interval)
+    assert live.lab.simulation_steps == 20
+    assert all(torch.equal(a, b) for a, b in zip(parameters, live.lab.network.parameters()))
+
+
+@pytest.mark.parametrize('heading,expected', [
+    (Direction.UP, (Direction.UP, Direction.LEFT, Direction.RIGHT)),
+    (Direction.DOWN, (Direction.DOWN, Direction.RIGHT, Direction.LEFT)),
+    (Direction.LEFT, (Direction.LEFT, Direction.DOWN, Direction.UP)),
+    (Direction.RIGHT, (Direction.RIGHT, Direction.UP, Direction.DOWN)),
+])
+@pytest.mark.parametrize('action', (0, 1, 2))
+def test_live_relative_action_moves_exactly_one_cell_for_every_heading(heading, expected, action):
+    live = controller(action)
+    dx, dy = heading.value
+    live.lab.game.snake.direction = heading
+    live.lab.game.snake.body = [(12 - n * dx, 12 - n * dy) for n in range(3)]
+    before = live.lab.game.get_state()
+    live.play()
+    assert live.advance(.2) == 1
+    after = live.lab.game.get_state()
+    next_dx, next_dy = expected[action].value
+    assert after.direction == expected[action]
+    assert after.snake == ((12 + next_dx, 12 + next_dy), *before.snake[:-1])
+    assert after.score == 0 and not after.terminated
+
+
+@pytest.mark.parametrize('case', ('self_collision', 'vacating_tail', 'growing_tail', 'board_edge', 'apple'))
+def test_live_collision_and_growth_match_the_observation(case):
+    live = controller(0)
+    game = live.lab.game
+    ring = [(5, 5), (4, 5), (4, 4), (5, 4), (6, 4), (6, 5)]
+    game.snake.body = ring + [(6, 6)] if case == 'self_collision' else ring.copy()
+    if case == 'board_edge':
+        game.snake.body = [(24, 5), (23, 5), (22, 5)]
+    elif case == 'apple':
+        game.snake.body = [(5, 5), (4, 5), (3, 5)]
+        game.apple = (6, 5)
+    game.pending_growth = int(case == 'growing_tail')
+    before = game.get_state()
+    fatal = case in ('self_collision', 'growing_tail', 'board_edge')
+    assert encode_observation(before)[0] == int(fatal)
+    live.play()
+    assert live.advance(.2) == 1
+    assert live.decision.before == before and live.lab.simulation_steps == 1
+    assert game.terminated == fatal
+    if fatal:
+        assert game.death_cause == ('board_edge' if case == 'board_edge' else 'self_collision')
+        assert game.get_state().snake == before.snake
+        assert not live.running and live.advance(1) == 0
+    else:
+        assert game.snake.body[0] == (6, 5)
+        assert len(game.snake.body) == len(before.snake) + int(case == 'apple')
+        assert game.score == int(case == 'apple')

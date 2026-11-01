@@ -35,7 +35,7 @@ class ModelStore:
                       if path.is_dir() and not path.is_symlink() and (path / "network.json").is_file()
                       and re.fullmatch(r"[A-Za-z0-9_-]{1,40}", path.name))
 
-    def save(self, name, network, *, overwrite=False, demo_steps=0):
+    def save(self, name, network, *, overwrite=False, demo_steps=0, reinforcement_learning=False):
         folder = self.path(name)
         if folder.exists() and not overwrite:
             raise FileExistsError("Model already exists; confirm replacement before saving")
@@ -59,7 +59,7 @@ class ModelStore:
                 sha256=hashlib.sha256(weights.read_bytes()).hexdigest(),
                 manual_edits=[list(item) for item in sorted(network.edited_parameters,
                              key=lambda item: (item[0], item[1], -1 if item[2] is None else item[2]))],
-                supervised_demo_steps=demo_steps, reinforcement_learning=False)
+                supervised_demo_steps=demo_steps, reinforcement_learning=reinforcement_learning)
             temporary.write_text(json.dumps(metadata, indent=2, allow_nan=False), encoding="utf-8")
             temporary.replace(old_metadata)  # Atomic commit; weights already exist.
             committed = True

@@ -1,6 +1,6 @@
 # SNAKE INFINITE
 
-**v1.3.0 — Neural Foundations**
+**v1.4.0 — First Intelligence**
 
 A minimalist Python/Pygame arcade game with Classic, Arcade, five challenges,
 official startup branding, and local records. Built on the existing v1.0/v1.1
@@ -8,8 +8,144 @@ architecture. The optional CPU PyTorch Neural Laboratory adds configurable netwo
 real neuron inspection, manual parameter edits, Step and Live simulation, and a
 supervised gradient demo.
 Classic, Arcade, and the definitive V1.2 challenges keep their existing rules.
-Live play uses the current untrained weights. There is no DQN, replay buffer,
-automatic episode restart, or reinforcement-learning training.
+The AI section integrates **NEURAL LABORATORY — Build & inspect**,
+**TRAINING CENTER — Train & monitor**, and **ARENA — Watch & evaluate**.
+DQN training and frozen greedy evaluation use the existing headless Classic engine.
+PyTorch remains optional for ordinary arcade play.
+
+## Training Center and DQN
+
+The default CPU network remains **11 → 16 → 8 → 3 (355 parameters)**. Its outputs
+estimate action values for Straight, Left and Right; no Softmax is applied. DQN
+collects transitions into replay memory, samples independent uniform minibatches,
+and fits selected-action Q-values to a reward plus the target network's discounted
+next-state maximum. A separate, frozen target network is periodically synchronized
+from the online network. Adam minimizes Huber TD loss with gradient-norm clipping.
+
+| Setting | Default |
+| --- | ---: |
+| Episode target | 10,000 |
+| Learning rate / discount gamma | 0.001 / 0.99 |
+| Replay capacity / batch size | 100,000 / 64 |
+| Initial / minimum epsilon | 1.0 / 0.05 |
+| Linear epsilon decay duration | 100,000 environment steps |
+| Target synchronization | Every 1,000 environment steps |
+| Automatic checkpoint | Every 500 completed episodes |
+| Training seed | 0 |
+| Global gradient-norm clip | 10 |
+| Stagnation limit | 100 × current body length steps without food |
+| Absolute episode cap | 10,000 movement steps |
+
+Choose a new architecture, the current lab network, or a saved laboratory model.
+The two configuration pages expose all settings, reward values, hidden sizes as
+comma-separated integers, activation (`relu`, `tanh`, `sigmoid`, `leaky_relu`),
+seed and model name. Counts come from the actual model. Invalid settings produce
+an error; a new run/resume replacing an existing run requires confirmation.
+
+Epsilon-greedy exploration uses a dedicated seeded RNG: with probability epsilon,
+choose one of the three actions uniformly; otherwise select the largest Q-value.
+Epsilon decays by environment steps, including warmup, and does not restart when
+resuming. Replay sampling and episode seed generation own separate RNG streams.
+No optimization occurs before a complete batch is available.
+
+Rewards are **+10 for an apple**, **−10 for collision**, **−0.01 for an ordinary
+movement**, and **−5 for stagnation**, replacing the ordinary step reward on that
+event. They are configurable baseline hyperparameters, not optimal guarantees.
+There is no distance reward or turning penalty. Snake score and training return
+are separate quantities. Eating resets the no-food counter; the absolute cap
+applies independently. Wall collision, self-collision and board completion are
+true terminations; stagnation and absolute step cap are administrative truncations.
+The chosen objective is a **finite episode return**: **neither termination nor
+truncation bootstraps**. No next-episode reset state is used in a terminal target.
+These limits never alter human Classic/Arcade or the lab's uncapped Live Mode.
+
+**Controls:** Start Training, Pause/Resume, Stop, Save Checkpoint, View Speed,
+Open in Arena, and Inspect in Lab. Pause/Stop retain the same in-memory run,
+including its partial episode; Resume continues it. Leaving via Back pauses the
+worker. Opening a saved snapshot in Arena/Lab can coexist with training because
+those views load independent models. Closing the app shuts down at a safe
+movement/optimization boundary; save before closing to retain unsaved progress.
+
+**Viewing modes:** View Speed cycles real-time (target 9 steps/s), accelerated
+2×/5×/10×/20×, and headless. These are requested playback rates. The dashboard
+reports achieved steps/second and episodes/second from measured active wall time;
+it does not claim the requested multiplier was achieved. Real-time/accelerated
+views show actual training states. Headless skips per-step drawing and trains as
+fast as practical, while snapshots update metrics at roughly 10 Hz and boundaries.
+No separate demonstration game is substituted for actual training.
+
+The dashboard shows status, episode/completed count, current/best/last-100 average
+score, epsilon, loss, steps, apples, collision/stagnation counts, elapsed time,
+gradient norm and checkpoint state. Four charts use actual score, rolling average,
+loss and epsilon samples. Charts retain min/max values in bounded display bins.
+History is bounded to the last 20,000 episode scores/lengths/returns and 2,000
+loss/epsilon samples; counters and cumulative return cover the complete run.
+Average length uses the retained episode window. The reported gradient norm is
+the measured norm before clipping. Non-finite Q-values/loss/gradients/parameters
+fail the run visibly; the model is never silently reinitialized.
+
+The worker exclusively owns its online/target models, optimizer and replay buffer.
+Pygame receives immutable board/metric/history snapshots. No training tensor is
+shared with drawing, Arena, or laboratory experiments. Training uses one CPU
+intra-op thread for these small dense networks and never requires CUDA.
+
+## Shared checkpoint library
+
+Training runs are grouped under `checkpoints/<run-id>/episode-<count>-<unique-id>/`
+in the writable application profile (beside `--settings` when overridden). Model
+name and episode count are metadata, not application/model-version numbers.
+The library shows checkpoints in Training Center, Arena and Lab → Models.
+
+Checkpoints contain JSON identity, timestamp, architecture, activation, seed,
+hyperparameters, episode/step/epsilon values, metrics and compatibility information;
+the online state dictionary; and a weights-only training payload containing the
+target network, Adam state, replay contents/cursor, histories/counters and RNG states.
+File sizes, checksums, shapes, dtypes, finite values and compatibility are validated.
+Only trusted local files are loaded, always with `weights_only=True` and no unsafe
+fallback. A checksum detects changes but does not authenticate a model.
+
+An episode-zero checkpoint is created for a new run. Automatic saves occur at the
+configured episode interval; completion saves another unique checkpoint. Existing
+destinations are never overwritten. A manual mid-episode request shows **pending**
+and saves at the next episode boundary; if paused, resume to reach that boundary.
+Boundary snapshots preserve the next training trajectory, including replay and
+exploration state, rather than the previous finished game's visible board.
+
+Select a saved checkpoint and Resume Selected to restore its hyperparameters and
+state. Only the configuration's **episode target** can extend the saved run; epsilon,
+Adam, replay and RNG states are preserved. Exact continuation is tested on the same
+CPU/runtime. Cross-version/backend bit-for-bit reproducibility is not promised.
+Ordinary Lab model saves remain explicitly weights/configuration-only experiments,
+not resumable training checkpoints.
+
+## Arena
+
+Choose a parent model, choose a checkpoint, review its architecture/training episode,
+enter a seed, and Load Trusted Checkpoint. The board is dominant; the HUD shows model
+name, checkpoint episode, score, simulation duration, movement count, direction,
+session best/games/average, and last termination reason. There is no neural graph.
+
+- **Play/Pause** continues the same game; no epsilon exploration or optimizer exists.
+- **Reset Same Seed** repeats the selected model/seed trajectory; seed is editable.
+- **New Game** starts a fresh seed; **Next Game** does so after a completed game.
+- **Speed** cycles 1×/2×/5×/10× (1× targets 9 movement steps/s).
+- **Auto Next** optionally starts another game after an editable 0–60 second delay.
+- **Select Model** returns to checkpoint selection; **Back to AI** pauses playback.
+
+Arena freezes model parameters and uses `inference_mode()` with greedy argmax. It
+uses the training checkpoint's Classic observation and episode-limit configuration,
+including stagnation/cap termination, to prevent infinite spectator runs. Resizing
+remains interactive. Excessive playback backlog pauses with an explicit message.
+Reset and evaluation do not modify checkpoint files or training state.
+
+**Laboratory integration:** Training Center → Inspect in Lab, or Lab → Models →
+Load Trusted Checkpoint, loads an independent experiment copy. Model name, training
+episode and actual architecture/weights are available with all existing Step/Live,
+input, neuron, parameter and supervised-gradient tools. Experiments never modify
+the source checkpoint; explicitly save a separate lab model to keep edited weights.
+
+See the [official v1.4.0 release notes](docs/releases/v1.4.0.md) and
+[measured training validation](docs/training-validation.md) for results and limitations.
 
 ## Neural Laboratory
 
@@ -57,8 +193,9 @@ four zeros. This first observation model is **Classic only**: stars and challeng
 hazards are deliberately excluded. Multiple food-direction flags may be active.
 
 The **three raw outputs** are **Straight, Turn left, Turn right**, in that order.
-They are untrained numbers, not probabilities, learned preferences, or meaningful
-Q-values yet. The order of relative actions differs from the danger feature order.
+A newly built network's values are untrained numbers, not probabilities or learned
+preferences. A trained checkpoint's values are estimated Q-values, still not
+probabilities or guarantees. The order of relative actions differs from the danger feature order.
 
 Laboratory controls:
 
@@ -89,6 +226,12 @@ highest raw output (ties select the first), and steps the existing game once.
 Manual observations never control live play. The output panel shows all three
 values to four decimal places, highlights the argmax, and names the selected action.
 An untrained network may circle or die quickly; this is expected.
+
+A fixed network can select Left for every orientation and stay in a safe 2×2
+loop indefinitely. A three-segment snake fits that loop without self-collision;
+food outside the loop is never collected. Classic has no starvation timeout.
+Observations and outputs are recomputed each tick even when the selected action
+repeats. Live Mode deliberately adds no random exploration or forced escape.
 
 **Decision inspection:** the graph, inputs, output panel and neuron inspector
 share an immutable **LAST DECISION / PRE-ACTION** snapshot. It includes the
@@ -166,7 +309,7 @@ Existing `dist/` executables from v1.2.1 are not updated by source changes. Rebu
 to obtain the new arcade menu/version. The existing spec explicitly excludes
 PyTorch and NumPy: the lightweight executable intentionally shows the dependency
 explanation for the lab. Installing Torch into a separate Python does not add it
-to a frozen executable. Run from source for the functional lab in v1.3. A future
+to a frozen executable. Run from source for the functional AI experiences in v1.4. A future
 separate AI-enabled Windows onedir build would need its own spec, CPU Torch/native
 libraries and licenses, a larger download, and independent clean-machine testing.
 
@@ -404,6 +547,15 @@ ai/
   network.py             optional CPU Torch model and real layer captures
   laboratory.py          separate step-based game and staged supervised demo
   live.py                nonblocking live scheduler and immutable decision snapshots
+  training_config.py     validated DQN/reward/episode settings
+  environment.py         Classic reward/termination wrapper
+  replay.py, dqn.py       bounded replay, online/target Q-learning, metrics
+  checkpoints.py         shared resumable boundary checkpoint library
+  worker.py              single-owner training thread and immutable UI snapshots
+  arena.py               frozen greedy evaluation and spectator scheduling
+ui/training_view.py      configuration and actual-data dashboard
+ui/arena_view.py          checkpoint selector and board-first spectator HUD
+ui/ai_components.py       editable forms, bounded charts, shared board drawing
   persistence.py         validated JSON + weights-only model storage
   runtime.py             availability probe without importing Torch
 ui/neural_view.py        configuration, inspector, editing, gradients, model library
@@ -471,6 +623,10 @@ Live tests cover inference-before-movement, one forward per step, FPS-independen
 speed, pause/resume/stop/reset, snapshot accuracy, bounded catch-up, game-over,
 tab/focus transitions, resized controls and quit handling.
 
-Next: **v1.4 — First Intelligence**, introducing Deep Q-Learning. Reinforcement
-learning, replay buffers, automated training episodes, trained policies, and spectator
-tools remain outside v1.3.
+DQN tests cover exploration, replay, Huber/Bellman targets, termination/truncation,
+target synchronization, gradient clipping, numerical failures, exact resumable
+checkpoints, worker control/shutdown and frozen Arena evaluation. End-to-end
+validation evaluates the initial and reloaded trained model on the same 20 seeds.
+
+Next: **v1.5**, focusing on deeper AI diagnostics, learning-curve analysis,
+architecture comparisons and advanced model evaluation.

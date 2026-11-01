@@ -15,6 +15,10 @@ class NeuralView:
         self.live = LiveController(laboratory)
         self.show_decision = False
         self.store = ModelStore(models_root)
+        from ai.checkpoints import CheckpointStore
+        self.checkpoints=CheckpointStore(self.store.root.parent/'checkpoints')
+        self.checkpoint_index=0
+        self.loaded_checkpoint=None
         self.tab = "lab"
         self.fields = {}
         self.focus = None
@@ -64,7 +68,7 @@ class NeuralView:
                 self.add("FORWARD PASS", 24, 511, 281, "forward")
                 self.add(ACTION_NAMES[self.relative].upper(), 24, 552, 155, "relative")
                 self.add("APPLY ACTION", 189, 552, 116, "apply")
-                self.add("NETWORK ACTION / UNTRAINED", 24, 593, 281, "network")
+                self.add("NETWORK ACTION / CHECKPOINT" if self.loaded_checkpoint else "NETWORK ACTION / UNTRAINED", 24, 593, 281, "network")
             else:
                 self.add("PAUSE" if self.live.running else "PLAY", 24, 470, 175, "play_pause", True)
                 self.add("STOP", 209, 470, 96, "stop")
@@ -101,6 +105,11 @@ class NeuralView:
             name = names[self.selected_model % len(names)] if names else "No saved networks"
             self.add(name, 90, 405, 620, "next_model")
             self.add("LOAD TRUSTED MODEL", 90, 455, 300, "load")
+            entries=self.checkpoints.entries()
+            entry=entries[self.checkpoint_index%len(entries)] if entries else None
+            title=f"{entry['name']} / episode {entry['episode']}" if entry else 'No trained checkpoints'
+            self.add(title,90,502,620,'next_checkpoint')
+            self.add('LOAD TRUSTED CHECKPOINT',90,545,350,'load_checkpoint')
         if self.tab != "config":
             self.add(f"LAYER {self.layer} / NEXT", 860, 153, 220, "layer")
             self.field("neuron", 1150, 153, 90)
@@ -157,6 +166,23 @@ class NeuralView:
     def selected_seed(self):
         return int(self.text["seed"]) if self.text["seed"].strip() else None
 
+    def load_checkpoint(self,path):
+        model,metadata=self.checkpoints.load_model(path)
+        self.live.stop()
+        self.lab.replace_network(model)
+        self.loaded_checkpoint=metadata
+        self.live.model_label=f"CHECKPOINT EPISODE {metadata['episode']}"
+        self.live.decision=self.live.previous_decision=None
+        self.show_decision=False
+        self.hidden=list(model.config.hidden_sizes)
+        self.activation=model.config.activation
+        self.text['init_seed']='' if model.config.seed is None else str(model.config.seed)
+        for index,size in enumerate(self.hidden):
+            self.text[f'size{index}']=str(size)
+        self.select(0,0)
+        self.status=f"Loaded {metadata['model_name']} / episode {metadata['episode']} / local experiment copy"
+        self.layout()
+
     def _action(self, action):
         if action.startswith("mode:"):
             self.live.set_mode(action.split(":")[1])
@@ -211,11 +237,17 @@ class NeuralView:
             self.pending = None
             if operation == "build":
                 self.lab.build(value)
+                self.loaded_checkpoint=None
+                self.live.model_label='UNTRAINED'
             elif operation == "save":
                 self.store.save(value, self.lab.network, overwrite=True, demo_steps=self.lab.demo_steps)
+            elif operation=='trained':
+                self.load_checkpoint(value)
             else:
                 network, metadata = self.store.load(value)
                 self.lab.replace_network(network)
+                self.loaded_checkpoint=None
+                self.live.model_label='UNTRAINED'
                 self.lab.demo_steps = metadata.get("supervised_demo_steps", 0)
                 self.hidden = list(network.config.hidden_sizes)
                 self.activation = network.config.activation
@@ -250,7 +282,8 @@ class NeuralView:
             self.lab.step(self.relative)
         elif action == "network":
             selected = self.lab.network_action()
-            self.status = f"One UNTRAINED action: {ACTION_NAMES[selected]} (argmax of current inputs)"
+            source='checkpoint' if self.loaded_checkpoint else 'UNTRAINED'
+            self.status = f"One {source} action: {ACTION_NAMES[selected]} (argmax of current inputs)"
         elif action.startswith("input:"):
             index = int(action.split(":")[1])
             self.lab.set_input(index, 1 - self.lab.observation[index])
@@ -305,6 +338,13 @@ class NeuralView:
                 self.status = "Network saved"
         elif action == "next_model":
             self.selected_model += 1
+        elif action=='next_checkpoint':
+            self.checkpoint_index+=1
+        elif action=='load_checkpoint':
+            entries=self.checkpoints.entries()
+            if not entries:
+                raise ValueError('No trained checkpoints; create a run in Training Center')
+            self.pending=('trained',entries[self.checkpoint_index%len(entries)]['path'])
         elif action == "load":
             names = self.store.names()
             if not names:
@@ -363,7 +403,9 @@ class NeuralView:
 
     def draw(self, surface):
         surface.fill(BG)
-        label(surface, "SNAKE INFINITE / NEURAL FOUNDATIONS", (24, 18), 24, GREEN, False)
+        label(surface, "NEURAL LABORATORY / Build & inspect", (24, 18), 24, GREEN, False)
+        if self.loaded_checkpoint:
+            label(surface,f"{self.loaded_checkpoint['model_name']} / episode {self.loaded_checkpoint['episode']}",(650,25),16,MUTED,False)
         label(surface, self.status[:145], (24, 699), 13, MUTED, False)
         self.row_hits = []
         if self.tab == "lab":
@@ -401,11 +443,11 @@ class NeuralView:
             label(surface, "Local model library", (90, 135), 26, GREEN, False)
             label(surface, "Name: letters, digits, hyphens and underscores (max 40)", (90, 207), 18, MUTED, False)
             label(surface, "JSON architecture + weights-only PyTorch state dictionary", (90, 350), 17, TEXT, False)
-            label(surface, "Load only models you trust. Loading replaces current weights.", (90, 520), 17, MUTED, False)
+            label(surface, "Load only trusted models. Experiments never alter saved checkpoints.", (90, 172), 16, MUTED, False)
             path = str(self.store.root)
-            label(surface, "Writable model directory:", (90, 570), 16, MUTED, False)
+            label(surface, "Writable model directory:", (90, 595), 16, MUTED, False)
             for index in range(0, len(path), 72):
-                label(surface, path[index:index + 72], (90, 598 + index // 72 * 22), 14, TEXT, False)
+                label(surface, path[index:index + 72], (90, 622 + index // 72 * 22), 14, TEXT, False)
         if self.tab != "config":
             self.draw_inspector(surface)
         for key, rect in self.fields.items():
@@ -424,7 +466,7 @@ class NeuralView:
             pygame.draw.rect(surface, PANEL, (330, 265, 620, 200), border_radius=12)
             operation = self.pending[0]
             title = {"build": "Replace current network weights?", "save": "Overwrite existing saved model?",
-                     "load": "Load trusted local model and replace weights?"}[operation]
+                     "load": "Load trusted local model and replace weights?",'trained':'Load trusted checkpoint into an experiment copy?'}[operation]
             label(surface, title, (640, 320), 22)
             label(surface, "This action replaces the corresponding parameters.", (640, 355), 16, MUTED)
 
@@ -433,7 +475,7 @@ class NeuralView:
         outputs = snapshot.outputs if snapshot else self.lab.outputs
         selected = max(range(3), key=lambda index: outputs[index])
         if decision_panel:
-            label(surface, "NETWORK DECISION / RAW UNTRAINED OUTPUTS", (x, y - 19), 13, MUTED, False)
+            label(surface, "NETWORK DECISION / RAW Q-VALUES" if self.loaded_checkpoint else "NETWORK DECISION / RAW UNTRAINED OUTPUTS", (x, y - 19), 13, MUTED, False)
         for index, name in enumerate(("Straight", "Left", "Right")):
             value = outputs[index]
             previous = self.live.previous_decision

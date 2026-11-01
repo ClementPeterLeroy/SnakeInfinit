@@ -76,6 +76,9 @@ class Application:
         self.lab_queue = queue.Queue()
         self.lab_thread = None
         self.lab_error = ""
+        self.ai_destination='neural'
+        self.training_view=None
+        self.arena_view=None
         self.rebuild_controls()
 
     def rebuild_controls(self):
@@ -83,7 +86,10 @@ class Application:
             self.controls = menu.buttons(self.screen == "ai")
         elif self.screen == "neural":
             self.controls = self.lab_view.buttons
-        elif self.screen in ("neural_loading", "neural_unavailable", "training"):
+        elif self.screen in ('training','arena'):
+            view=self.training_view if self.screen=='training' else self.arena_view
+            self.controls=view.buttons
+        elif self.screen in ("neural_loading", "neural_unavailable"):
             from ui.components import button
             self.controls = [button("BACK TO AI", 500, 550, 280, "ai")]
         elif self.screen == "settings":
@@ -105,6 +111,8 @@ class Application:
     def action(self, action):
         if self.screen == "neural" and not action.startswith("lab:") and self.lab_view:
             self.lab_view.pause("Live paused / laboratory left")
+        if self.screen=='arena' and not action.startswith('arena:') and self.arena_view:
+            self.arena_view.pause()
         self.accumulator = 0
         if action not in ("lab:layer", "lab:select_neuron", "lab:bias"):
             self.timing_epoch += 1
@@ -114,7 +122,39 @@ class Application:
             self.game.snake.pending = None
         if action in ("pause", "over"):
             self.feedback.enter_overlay()
-        if action.startswith("lab:"):
+        if action.startswith('train:'):
+            command=action.split(':',1)[1]
+            if command=='back':
+                if self.training_view.worker:
+                    self.training_view.worker.command('pause')
+                self.screen='ai'
+            elif command in ('arena','lab'):
+                path=self.training_view.checkpoint_path()
+                if path:
+                    try:
+                        if command=='arena':
+                            self.open_experience('arena')
+                            self.arena_view.load(path)
+                        else:
+                            self.open_experience('neural')
+                            self.lab_view.load_checkpoint(path)
+                    except (ValueError,OSError,RuntimeError) as error:
+                        self.screen='training'
+                        self.training_view.status=str(error)
+                else:
+                    self.training_view.status='Wait for the initial checkpoint or request Save Checkpoint'
+            else:
+                self.training_view.action(command)
+        elif action.startswith('arena:'):
+            command=action.split(':',1)[1]
+            if command=='back':
+                self.arena_view.pause()
+                self.screen='ai'
+            else:
+                self.arena_view.action(command)
+        elif action in ('open_training','training','open_arena'):
+            self.open_experience('arena' if action=='open_arena' else 'training')
+        elif action.startswith("lab:"):
             command = action.split(":", 1)[1]
             if command == "back":
                 self.lab_view.pause("Live paused / laboratory left")
@@ -123,6 +163,7 @@ class Application:
             else:
                 self.lab_view.action(command)
         elif action == "open_neural":
+            self.ai_destination='neural'
             self.open_neural()
         elif action == "exit":
             self.finish_session()
@@ -179,6 +220,23 @@ class Application:
             self.screen = action
         self.rebuild_controls()
 
+    def open_experience(self,destination):
+        self.ai_destination=destination
+        if self.lab_view is None:
+            self.open_neural()
+            return
+        root=self.store.path.parent
+        if destination=='training' and self.training_view is None:
+            from ui.training_view import TrainingView
+            self.training_view=TrainingView(root,lambda:self.lab_view.lab)
+        elif destination=='arena' and self.arena_view is None:
+            from ui.arena_view import ArenaView
+            self.arena_view=ArenaView(root)
+        if destination=='neural':
+            self.lab_view.live.stop()
+            self.lab_view.layout()
+        self.screen=destination
+
     def open_neural(self):
         from ai.runtime import torch_available
         if self.lab_view is not None:
@@ -186,7 +244,7 @@ class Application:
             self.lab_view.layout()
             self.screen = "neural"
         elif not torch_available():
-            self.lab_error = "PyTorch is optional. Install requirements-ai.txt to enable this laboratory."
+            self.lab_error = "PyTorch is optional. Install requirements-ai.txt to enable AI features."
             self.screen = "neural_unavailable"
         else:
             self.screen = "neural_loading"
@@ -263,6 +321,14 @@ class Application:
                 (position[1] - view.y) * 720 / view.height)
 
     def handle_event(self, event):
+        if self.screen in ('training','arena'):
+            view=self.training_view if self.screen=='training' else self.arena_view
+            position=self.mouse_position(getattr(event,'pos',pygame.mouse.get_pos()))
+            if event.type==pygame.WINDOWFOCUSLOST and self.screen=='arena':
+                view.pause()
+            if view.handle_event(event,position):
+                self.controls=view.buttons
+                return
         if self.screen == "neural":
             if event.type == pygame.WINDOWFOCUSLOST:
                 self.lab_view.pause("Live paused / window focus lost")
@@ -287,7 +353,9 @@ class Application:
                     self.player_name = self.player_name[:-1]
                 return
             if event.key == pygame.K_ESCAPE:
-                if self.screen in ("neural", "neural_loading", "neural_unavailable", "training"):
+                if self.screen in ('training','arena'):
+                    self.action('train:back' if self.screen=='training' else 'arena:back')
+                elif self.screen in ("neural", "neural_loading", "neural_unavailable"):
                     self.action("ai")
                 elif self.screen in ("game", "countdown"):
                     self.action("pause")
@@ -311,6 +379,11 @@ class Application:
                 self.action(action)
 
     def update(self, dt):
+        if self.screen in ('training','arena'):
+            view=self.training_view if self.screen=='training' else self.arena_view
+            view.update(dt)
+            self.controls=view.buttons
+            return
         if self.screen == "neural":
             self.lab_view.update(dt)
             self.controls = self.lab_view.buttons
@@ -325,6 +398,8 @@ class Application:
                     from ui.neural_view import NeuralView
                     self.lab_view = NeuralView(result, self.store.path.parent / "models")
                     self.screen = "neural"
+                    if self.ai_destination!='neural':
+                        self.open_experience(self.ai_destination)
                 except Exception as error:
                     logging.exception("Neural interface could not initialize")
                     self.lab_error = str(error)
@@ -406,14 +481,13 @@ class Application:
             menu.draw(self.canvas, self.screen == "ai", self.assets)
         elif self.screen == "neural":
             self.lab_view.draw(self.canvas)
-        elif self.screen in ("neural_loading", "neural_unavailable", "training"):
+        elif self.screen in ('training','arena'):
+            (self.training_view if self.screen=='training' else self.arena_view).draw(self.canvas)
+        elif self.screen in ("neural_loading", "neural_unavailable"):
             from ui.components import backdrop
-            title = {"neural_loading": "LOADING NEURAL LABORATORY", "neural_unavailable": "AI DEPENDENCIES REQUIRED",
-                     "training": "TRAINING / COMING IN v1.4"}[self.screen]
+            title = {"neural_loading": "LOADING AI RUNTIME", "neural_unavailable": "AI DEPENDENCIES REQUIRED"}[self.screen]
             backdrop(self.canvas, "SNAKE INFINITE / ARTIFICIAL INTELLIGENCE", title)
-            message = self.lab_error if self.screen == "neural_unavailable" else (
-                "Loading the optional CPU PyTorch runtime..." if self.screen == "neural_loading"
-                else "First Intelligence: Deep Q-Learning is the next milestone.")
+            message = self.lab_error if self.screen == "neural_unavailable" else "Loading the optional CPU PyTorch runtime..."
             for index in range(0, len(message), 95):
                 label(self.canvas, message[index:index + 95], (640, 320 + index // 95 * 28), 18, MUTED)
         elif self.screen == "settings":
@@ -470,7 +544,7 @@ class Application:
                 # Arcade retains its catch-up cap; the lab owns a bounded scheduler
                 # that accounts for full elapsed time and explicitly reports stalls.
                 elapsed = self.clock.tick(120) / 1000
-                dt = elapsed if self.screen in ("intro", "neural") else min(elapsed, 0.25)
+                dt = elapsed if self.screen in ("intro", "neural",'arena') else min(elapsed, 0.25)
                 before = self.timing_epoch
                 for event in pygame.event.get():
                     self.handle_event(event)
@@ -484,6 +558,8 @@ class Application:
             self.close()
 
     def close(self):
+        if self.training_view:
+            self.training_view.close()
         self.finish_session()
         if self.video is not None:
             self.video.close()

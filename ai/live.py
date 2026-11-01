@@ -45,6 +45,7 @@ class LiveController:
         self.decision = None
         self.previous_decision = None
         self.message = "Step Mode / CPU / raw untrained outputs"
+        self.model_label='UNTRAINED'
 
     def pause(self, message="Live paused / decision preserved"):
         self.running = False
@@ -61,7 +62,7 @@ class LiveController:
         self.mode = "live"
         self.accumulator = 0.0
         self.running = not self.lab.game.terminated
-        self.message = "LIVE / UNTRAINED / argmax control" if self.running else "GAME OVER / reset to play again"
+        self.message = f"LIVE / {self.model_label} / argmax control" if self.running else "GAME OVER / reset to play again"
 
     def stop(self):
         self.set_mode("step")

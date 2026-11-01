@@ -5,9 +5,14 @@ from ui.components import BG, GREEN, MUTED, backdrop, button, label
 
 def buttons(ai=False):
     if ai:
-        return [button("NEURAL LABORATORY", 440, 292, 400, "open_neural", True),
-                button("TRAINING (COMING SOON)", 440, 362, 400, "training"),
-                button("BACK", 500, 452, 280, "menu")]
+        controls=[]
+        for index,(title,subtitle,action) in enumerate((('NEURAL LABORATORY','Build & inspect','open_neural'),
+                ('TRAINING CENTER','Train & monitor','open_training'),('ARENA','Watch & evaluate','open_arena'))):
+            control=button(title,440,250+index*88,400,action,index==0)
+            control.rect.height=68
+            control.subtitle=subtitle
+            controls.append(control)
+        return controls+[button('BACK',500,528,280,'menu')]
     return [button("SOLO", 500, 300, 280, "modes", True),
             button("AI", 500, 364, 280, "ai"),
             button("LEADERBOARD", 500, 428, 280, "leaderboard"),
@@ -19,8 +24,8 @@ def draw(surface, ai=False, assets=None):
     if ai:
         from ai.runtime import torch_available
         backdrop(surface, "SNAKE INFINITE / PHASE II", "ARTIFICIAL INTELLIGENCE")
-        message = "Inspect real CPU PyTorch networks. Training arrives in v1.4." if torch_available() else "Optional PyTorch required: install requirements-ai.txt. Arcade remains available."
-        label(surface, message, (640, 550), 18, MUTED)
+        message = "Build, train and evaluate real CPU PyTorch networks." if torch_available() else "Optional PyTorch required: install requirements-ai.txt. Arcade remains available."
+        label(surface, message, (640, 625), 18, MUTED)
         return
     surface.fill(BG)
     logo = assets.fit("logo.png", (740, 255)) if assets is not None else None

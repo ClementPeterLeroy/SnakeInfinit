@@ -35,3 +35,23 @@ finally:
     result = subprocess.run([sys.executable, '-c', script, str(tmp_path / 'settings.json')],
                             capture_output=True, text=True, timeout=30, env=environment)
     assert result.returncode == 0, result.stderr
+
+
+def test_all_three_ai_entries_gracefully_handle_missing_torch(tmp_path):
+    script='''
+import sys
+sys.modules['torch']=None
+from pathlib import Path
+from app import Application
+app=Application(Path(sys.argv[1]))
+try:
+    for action in ('open_neural','open_training','open_arena'):
+        app.action(action)
+        assert app.screen=='neural_unavailable'
+        app.draw(.016)
+finally:app.close()
+'''
+    env=dict(os.environ,SDL_VIDEODRIVER='dummy',SDL_AUDIODRIVER='dummy')
+    result=subprocess.run([sys.executable,'-c',script,str(tmp_path/'settings.json')],
+                          capture_output=True,text=True,timeout=30,env=env)
+    assert result.returncode==0,result.stderr

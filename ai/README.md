@@ -1,4 +1,4 @@
-# Neural Foundations / v1.3
+# First Intelligence / v1.4
 
 `observations`, `actions`, and `config` are pure Python. `runtime` probes optional
 Torch availability without importing it. `network`, `laboratory`, and `persistence`
@@ -25,4 +25,17 @@ assumptions enter the game engine. Relative output actions are Straight/Left/Rig
 the writable profile. The UI obtains overwrite/replacement confirmation; loading
 checks observation/action compatibility and tensor structure. Optimizer state is
 not a persisted training checkpoint. See the main README for all features and UI
-instructions. V1.4 First Intelligence will introduce DQN separately.
+instructions.
+
+`training_config.py`, `environment.py` and `replay.py` define bounded Classic
+episodes, explicit termination/truncation and independently seeded experience
+sampling. `dqn.py` owns online/target networks, epsilon-greedy exploration,
+Huber/Adam optimization and measured training metrics. `worker.py` owns all live
+training tensors and exports immutable snapshots to the Training Center.
+
+`checkpoints.py` combines the existing safe model serializer with full boundary
+resume state, including target, Adam, replay, counters and random streams.
+`arena.py` performs frozen greedy evaluation without optimization or exploration.
+Episode limits apply only to training/Arena, never normal arcade or lab Live Mode.
+Both genuine termination and administrative truncation close the finite-return
+objective without bootstrapping. See the README and training validation report.
