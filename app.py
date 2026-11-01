@@ -1,9 +1,10 @@
 """Application state, input routing, and fixed-timestep scheduling."""
 import argparse
+import logging
 from pathlib import Path
 import pygame
 from core.game import Game
-from core.config import VERSION, SUBTITLE, ROOT, SPEEDS, GameRules, arcade_rules
+from core.config import VERSION, SUBTITLE, SPEEDS, GameRules, arcade_rules
 from core.challenges import BY_ID
 from core.types import Direction, GameStatus, GameEvent
 from services.assets import AssetManager
@@ -11,6 +12,7 @@ from services.audio import AudioManager
 from services.persistence import SettingsStore
 from services.records import RecordsStore
 from services.video import StartupVideo
+from services.resources import startup_video_path
 from ui import game_view, menu, pause_view, settings_view, catalog, leaderboard_view
 from ui.components import BG, reset_fonts
 from ui.effects import Feedback
@@ -185,7 +187,9 @@ class Application:
         if self.intro_attempted:
             return
         self.intro_attempted = True
-        self.video = StartupVideo(ROOT / "assets" / "px" / "SnakeInfinite_Startup.mp4")
+        path = startup_video_path()
+        logging.info("Startup invoked once; path=%s exists=%s", path, path.is_file())
+        self.video = StartupVideo(path)
         self.audio.suspend_music(True)
         self.screen = "intro"
         self.rebuild_controls()
@@ -253,6 +257,7 @@ class Application:
     def update(self, dt):
         if self.screen == "intro":
             if self.video.update(dt):
+                logging.info("Startup finished; outcome=%s; transitioning to main menu", "fallback" if getattr(self.video, "error", None) else "played")
                 if self.settings.animations and getattr(self.video, "current", None) is not None:
                     self.intro_exit_frame = pygame.Surface((1280, 720))
                     self.video.draw(self.intro_exit_frame)
@@ -371,7 +376,8 @@ class Application:
             self.start_intro()
             while self.running:
                 # Limit a stalled frame's catch-up to keep the UI responsive.
-                dt = min(self.clock.tick(120) / 1000, 0.25)
+                elapsed = self.clock.tick(120) / 1000
+                dt = elapsed if self.screen == "intro" else min(elapsed, 0.25)
                 before = self.timing_epoch
                 for event in pygame.event.get():
                     self.handle_event(event)
@@ -398,5 +404,16 @@ def main():
     parser = argparse.ArgumentParser(description=f"SnakeInfinite {VERSION} — {SUBTITLE}")
     parser.add_argument("--settings", type=Path, help="Override the user settings JSON path")
     parser.add_argument("--smoke-test", action="store_true", help="Render three frames and exit")
+    parser.add_argument("--validate-build", type=Path, help="Run local distribution diagnostics and write a JSON report")
     args = parser.parse_args()
-    Application(args.settings).run(3 if args.smoke_test else None)
+    from services.diagnostic_logging import configure_logging
+    configure_logging(args.settings.parent if args.settings is not None else None)
+    try:
+        if args.validate_build is not None:
+            from services.build_validation import validate_build
+            validate_build(args.settings, args.validate_build)
+        else:
+            Application(args.settings).run(3 if args.smoke_test else None)
+    except Exception:
+        logging.exception("Application startup or execution failed")
+        raise

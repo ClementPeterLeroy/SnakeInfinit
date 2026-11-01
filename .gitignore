@@ -6,3 +6,6 @@ __pycache__/
 pytest-cache-files-*/
 *.py[cod]
 settings.json
+.venvsnake/
+build/
+dist/

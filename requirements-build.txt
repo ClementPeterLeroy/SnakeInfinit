@@ -1,0 +1,5 @@
+# Validated Windows build environment (CPython 3.13 x64).
+pygame==2.6.1
+av==17.1.0
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.9

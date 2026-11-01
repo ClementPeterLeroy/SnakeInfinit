@@ -2,7 +2,7 @@
 import logging
 from collections import OrderedDict
 import pygame
-from core.config import ROOT
+from services.resources import resource_path
 
 
 class AssetManager:
@@ -17,7 +17,7 @@ class AssetManager:
             return self.scaled[key]
         if name not in self.originals:
             try:
-                self.originals[name] = pygame.image.load(ROOT / "assets" / "px" / name).convert_alpha()
+                self.originals[name] = pygame.image.load(resource_path("assets", "px", name)).convert_alpha()
             except (pygame.error, OSError) as error:
                 logging.warning("Image unavailable: %s", error)
                 self.originals[name] = None

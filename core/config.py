@@ -4,8 +4,8 @@ from dataclasses import dataclass
 import math
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "v1.2.0"
-SUBTITLE = "Definitive Arcade Edition"
+VERSION = "v1.2.1"
+SUBTITLE = "Startup Repair & Windows Release"
 BOARD_SIZE = 25
 SPEEDS = {"CASUAL": 6, "NORMAL": 9, "FAST": 13}
 

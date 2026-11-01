@@ -1,7 +1,7 @@
 """One audio owner; the application forwards simulation events here."""
 import logging
 import pygame
-from core.config import ROOT
+from services.resources import resource_path
 from core.types import GameEvent
 
 
@@ -12,7 +12,7 @@ class AudioManager:
         self.music_loaded = False
         self.music_started = False
         self.music_paused = False
-        self.music_path = ROOT / "assets" / "snd" / "synth_wave_background.wav"
+        self.music_path = resource_path("assets", "snd", "synth_wave_background.wav")
         self.sounds = {}
         self.voices = {}
         self.counts = {}
@@ -31,7 +31,7 @@ class AudioManager:
                             (GameEvent.LOST, "game_over.wav"),
                             (GameEvent.STAR, "eating_star.wav")):
             try:
-                self.sounds[event] = pygame.mixer.Sound(ROOT / "assets" / "snd" / name)
+                self.sounds[event] = pygame.mixer.Sound(resource_path("assets", "snd", name))
                 self.sounds[event].set_volume(0.65)
             except (pygame.error, OSError) as error:
                 logging.warning("Sound unavailable: %s", error)
@@ -40,13 +40,14 @@ class AudioManager:
                                                   for word in ("3", "2", "1", "GO!")))):
             for key, name in entries:
                 try:
-                    table[key] = pygame.mixer.Sound(ROOT / "assets" / "snd" / name)
+                    table[key] = pygame.mixer.Sound(resource_path("assets", "snd", name))
                 except (pygame.error, OSError) as error:
                     logging.warning("Announcement unavailable (%s): %s", name, error)
         try:
             pygame.mixer.music.load(self.music_path)
             pygame.mixer.music.set_volume(0.3)
             self.music_loaded = True
+            logging.info("Background music loaded: %s; mixer=%s", self.music_path, pygame.mixer.get_init())
         except (pygame.error, OSError) as error:
             logging.warning("Music unavailable: %s", error)
         self.apply_settings()

@@ -1,10 +1,51 @@
 # SNAKE INFINITE
 
-**v1.2.0 — Definitive Arcade Edition**
+**v1.2.1 — Startup Repair & Windows Release**
 
 A minimalist Python/Pygame arcade game with Classic, Arcade, five challenges,
 official startup branding, and local records. Built on the existing v1.0/v1.1
 architecture. No automated snakes, neural networks, or training dependencies.
+This maintenance version preserves the definitive V1.2 challenge mechanics.
+
+## Windows application
+
+Launch `dist/release/SnakeInfinite/SnakeInfinite.exe`. Keep the **entire
+SnakeInfinite folder**, including `_internal`, together when copying it. This is
+a standalone Windows x64 onedir build; it does not require a separate Python
+installation. Validation on a clean machine without Python is still recommended.
+
+The official video plays once before the menu, preserving its aspect ratio.
+The supplied file is `assets/px/SnakeInfinite_Startup.mp4`; the resolver also
+accepts `SnakeInfinite_Startup_6s.mp4` in supported asset locations. It never
+creates a replacement animation. Persistent logs are at
+`%LOCALAPPDATA%/SnakeInfinite/logs/SnakeInfinite.log`.
+
+Build on Windows with Python 3.13 x64:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows.ps1 -Diagnostic
+# Validate the diagnostic version, then build the console-free release:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows.ps1
+```
+
+If this existing environment has no pip, use
+`uv pip install --python .venv/Scripts/python.exe -r requirements-build.txt`.
+`-Python path/to/python.exe` selects another build interpreter. The spec includes
+only runtime artwork/video/sounds, application modules, and required Pygame/PyAV
+libraries. Tests, caches, unused artwork, and pytest are excluded. PyInstaller's
+[onedir spec](https://pyinstaller.org/en/stable/spec-files.html) produces
+`dist/diagnostic/` with a console and `dist/release/` without a console.
+
+```powershell
+.\.venv\Scripts\python.exe tools/validate_windows_build.py dist/release/SnakeInfinite/SnakeInfinite.exe --output .artifacts/windows-release-validation
+```
+
+The validator launches the executable twice from outside the repository, with an
+isolated profile and native offscreen Windows window. It checks video, runtime
+assets, audio-channel activity, all seven modes, pause/restart/exit, and persisted
+data. It does not assess audible speaker output. See the
+[Windows checklist](docs/windows-validation.md) and [maintenance notes](docs/releases/v1.2.1.md).
 
 ## Run
 
@@ -140,11 +181,16 @@ devices and playback failures never prevent play.
 
 ## Local records and settings
 
-User files live outside the source tree:
+User files live outside the source tree and read-only bundle:
 
-- Windows: `%APPDATA%/snake-ai-laboratory/`
-- Other platforms: `$XDG_CONFIG_HOME/snake-ai-laboratory/`, falling back to
-  `~/.config/snake-ai-laboratory/`.
+- Windows: `%LOCALAPPDATA%/SnakeInfinite/`
+- Other platforms: `$XDG_DATA_HOME/SnakeInfinite/`, falling back to
+  `~/.local/share/SnakeInfinite/`.
+
+Missing settings/records are copied from the previous
+`%APPDATA%/snake-ai-laboratory/` location, the old XDG config location, or a legacy
+application directory. Originals are never deleted and existing destination files
+are never replaced. Copy failures are logged and the app remains usable.
 
 `settings.json` migrates older preferences with Voice enabled by default.
 `records.json` stores leaderboards, statistics, and challenge records. Override
@@ -185,10 +231,17 @@ services/
   persistence.py       settings validation and atomic writes
   records.py           scores, statistics, challenge records and recovery
   video.py              bounded startup decoder worker
+  resources.py          development/frozen read-only resource resolution
+  userdata.py           writable profiles and copy-only legacy migration
+  diagnostic_logging.py persistent rotating logs
+  build_validation.py   opt-in local distribution diagnostics
 ui/
   menu.py, catalog.py, leaderboard_view.py, settings_view.py
   game_view.py, pause_view.py, countdown.py, effects.py, components.py
 tools/build_icon.py     approved PNG to Windows ICO helper
+tools/validate_windows_build.py  external-cwd executable validation
+SnakeInfinite.spec      Windows onedir packaging configuration
+build_windows.ps1       diagnostic and console-free release builds
 tests/                  earlier coverage plus Arcade and integration tests
 agents/, ai/            documented future extension points
 assets/                 original artwork, video, sounds, and derived ICO
@@ -238,6 +291,8 @@ Coverage includes Arcade, stars/growth, all challenge victories, the 50-segment
 20-cell/second start, permanent wall accumulation, body-sensitive instantaneous
 explosions, reproducibility, countdown freezing, voices, local record recovery,
 statistics, UI, and real MP4 decoding. Headless tests forbid importing Pygame.
+Maintenance tests add frozen resource lookup, migration, initialization failures,
+and irregular frame timestamps.
 Dummy-device tests verify rendering/routing without proving audible output.
 `--smoke-test` renders three frames and exits with decoder cleanup; normal startup
 plays the complete video.

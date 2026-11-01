@@ -2,10 +2,10 @@
 from dataclasses import asdict, dataclass
 import json
 import logging
-import os
 from pathlib import Path
 import tempfile
 from core.config import SPEEDS
+from services.userdata import user_data_dir, migrate_user_data
 
 
 @dataclass
@@ -18,15 +18,13 @@ class Settings:
 
 
 def default_path() -> Path:
-    if os.name == "nt":
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    else:
-        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    return base / "snake-ai-laboratory" / "settings.json"
+    return user_data_dir() / "settings.json"
 
 
 class SettingsStore:
     def __init__(self, path: Path | None = None):
+        if path is None:
+            migrate_user_data()
         self.path = path if path is not None else default_path()
 
     def load(self) -> Settings:
