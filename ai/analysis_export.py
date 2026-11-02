@@ -60,7 +60,8 @@ def export_csv(path,datasets,kind='raw',start=None,end=None,size=100,alignment='
         raise FileExistsError('Export exists; choose a new filename')
     path.parent.mkdir(parents=True,exist_ok=True)
     metadata=dict(schema_version=1,datasets=[dict(id=d.identifier,name=d.name,kind=d.kind,limitations=d.limitations,
-        checkpoint=d.checkpoint,checkpoint_episode=d.checkpoint_episode) for d in datasets],
+        checkpoint=d.checkpoint,checkpoint_episode=d.checkpoint_episode,model_identity=d.model_identity,
+        architecture=d.architecture,parameter_count=d.parameter_count) for d in datasets],
         selected_range=[start,end],range_unit=alignment,grouping=size,alignment=alignment,
         quartiles='linear/type 7: h=(n-1)*p',standard_deviation='population, ddof=0',whiskers='true minimum/maximum')
     created=False

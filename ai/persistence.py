@@ -14,6 +14,8 @@ from ai.config import NetworkConfig
 from ai.network import SnakeNetwork
 from ai.observations import FEATURE_NAMES
 from services.userdata import user_data_dir
+from ai.model_registry import ModelSpec,identity,parse_model_config,build_model
+from ai.encoders import get_encoder
 
 
 class ModelStore:
@@ -53,13 +55,15 @@ class ModelStore:
         committed = False
         try:
             torch.save(network.state_dict(), weights)
-            metadata = dict(format_version=1, application_version=VERSION,
+            registered=isinstance(network.config,ModelSpec)
+            metadata = dict(format_version=2 if registered else 1, application_version=VERSION,
                 created_utc=datetime.now(timezone.utc).isoformat(), architecture=network.config.to_dict(),
-                features=list(FEATURE_NAMES), actions=list(ACTION_NAMES), weights_file=weights.name,
+                features=list(get_encoder(network.config.encoder_id).ordering) if registered else list(FEATURE_NAMES), actions=list(ACTION_NAMES), weights_file=weights.name,
                 sha256=hashlib.sha256(weights.read_bytes()).hexdigest(),
                 manual_edits=[list(item) for item in sorted(network.edited_parameters,
                              key=lambda item: (item[0], item[1], -1 if item[2] is None else item[2]))],
                 supervised_demo_steps=demo_steps, reinforcement_learning=reinforcement_learning)
+            metadata.update(identity(network.config))
             temporary.write_text(json.dumps(metadata, indent=2, allow_nan=False), encoding="utf-8")
             temporary.replace(old_metadata)  # Atomic commit; weights already exist.
             committed = True
@@ -81,11 +85,12 @@ class ModelStore:
             if metadata_path.stat().st_size > 64_000:
                 raise ValueError("Model metadata is too large")
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            if (not isinstance(metadata, dict) or metadata.get("format_version") != 1
-                    or metadata.get("features") != list(FEATURE_NAMES)
+            if (not isinstance(metadata, dict) or metadata.get("format_version") not in (1,2)
                     or metadata.get("actions") != list(ACTION_NAMES)):
                 raise ValueError("Incompatible observation/action model")
-            config = NetworkConfig.from_dict(metadata.get("architecture"))
+            config = parse_model_config(metadata)
+            expected_features=list(get_encoder(config.encoder_id).ordering) if isinstance(config,ModelSpec) else list(FEATURE_NAMES)
+            if metadata.get('features')!=expected_features:raise ValueError('Incompatible encoder features/channels')
             demo_steps = metadata.get("supervised_demo_steps", 0)
             if type(demo_steps) is not int or demo_steps < 0:
                 raise ValueError("Invalid supervised update count")
@@ -103,7 +108,7 @@ class ModelStore:
                 if sum(item.file_size for item in archive.infolist()) > 16_000_000:
                     raise ValueError("Expanded weights archive is too large")
             state = torch.load(weights, map_location="cpu", weights_only=True)
-            model = SnakeNetwork(config)
+            model = build_model(config) if isinstance(config,ModelSpec) else SnakeNetwork(config)
             expected = model.state_dict()
             if not isinstance(state, dict) or set(state) != set(expected):
                 raise ValueError("Weights do not match the architecture")
@@ -112,6 +117,7 @@ class ModelStore:
                         or value.dtype != torch.float32 or not torch.isfinite(value).all()):
                     raise ValueError("Invalid parameter tensor: " + key)
             model.load_state_dict(state, strict=True)
+            if isinstance(config,ModelSpec) and metadata.get('manual_edits'):raise ValueError('Registered models do not support legacy neuron-edit metadata')
             for item in metadata.get("manual_edits", []):
                 if not isinstance(item, list) or len(item) != 3:
                     raise ValueError("Invalid manual-edit metadata")

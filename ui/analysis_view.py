@@ -367,9 +367,13 @@ class AnalysisView(FormView):
             steps=self.bundle['models'][index]['recorded_steps'] if self.bundle and index<len(self.bundle['models']) else None
             old_clip=surface.get_clip()
             surface.set_clip(pygame.Rect(x,150,600,36))
-            label(surface,f"{'AB'[index]} / {dataset.kind.upper()} / {dataset.architecture} / {dataset.parameter_count:,} params",(x,153),13,MODEL_COLORS[index],False)
+            info=dataset.model_identity or {}
+            description=(info['architecture_name']+' / '+info['encoder_name']) if info else str(dataset.architecture)
+            label(surface,f"{'AB'[index]} / {dataset.kind.upper()} / {description}",(x,153),12,MODEL_COLORS[index],False)
             completed=records[-1].episode if records else 0
-            label(surface,f"Inputs {dataset.architecture[0]} / ep {completed:,} / n {len(records):,} / steps {steps if steps is not None else 'N/A'} / {dataset.status}"[:92],(x,169),13,TEXT,False)
+            shape='3x25x25 + heading4' if isinstance(info.get('input_shape'),dict) else str(dataset.architecture[0])
+            status=dataset.status.replace('Training history through checkpoint','Checkpoint history').replace('Frozen greedy evaluation','Frozen greedy')
+            label(surface,f"{shape} / {dataset.parameter_count:,} params / ep {completed:,} / n {len(records):,} / steps {steps if steps is not None else 'N/A'} / {status}",(x,169),12,TEXT,False)
             surface.set_clip(old_clip)
         self.chart.draw(surface,pygame.Rect(24,266,886,300),self.bundle,mouse,self.show_mean,self.show_median)
         models='A emerald / B blue' if self.bundle and len(self.bundle['models'])>1 else 'A emerald'

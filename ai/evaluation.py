@@ -18,8 +18,6 @@ def evaluate_checkpoints(paths,seeds,output_root,cancel=None,progress=None,confi
     for path in paths:
         store=CheckpointStore(path.parent.parent)
         model,metadata=store.load_model(path)
-        if model.config.input_size!=11:
-            raise ValueError('Only the baseline 11-input encoder is executable in v1.5')
         loaded.append((model,metadata,path))
     config=TrainingConfig.from_dict(configuration or loaded[0][1]['hyperparameters'])
     identifier=uuid4().hex
@@ -39,8 +37,9 @@ def evaluate_checkpoints(paths,seeds,output_root,cancel=None,progress=None,confi
             records.append(EpisodeRecord(metadata['model_identifier'],index+1,env.game.score,env.steps,
                 env.total_reward,env.reason,cumulative,0.,None,env.game.apples_eaten,seed))
             if progress:progress(model_index,index+1,len(seeds))
+        from ai.model_registry import identity
         models.append(dict(name=metadata['model_name'],checkpoint=str(path.resolve()),training_episode=metadata['episode'],
-            architecture=model.config.sizes,run_id=metadata['model_identifier'],records=[asdict(row) for row in records]))
+            architecture=model.config.sizes,model_identity=identity(model.config),run_id=metadata['model_identifier'],records=[asdict(row) for row in records]))
     payload=dict(schema_version=1,identifier=identifier,dataset_type='evaluation',policy='frozen greedy; epsilon=0; no optimizer',
         seeds=list(seeds),configuration=config.to_dict(),models=models,created_utc=datetime.now(timezone.utc).isoformat())
     output_root=Path(output_root)

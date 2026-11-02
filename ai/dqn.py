@@ -20,7 +20,18 @@ def bellman_targets(rewards, next_values, done, gamma):
 class Trainer:
     def __init__(self, config=TrainingConfig(), network=None, architecture=None):
         self.config = config
-        self.online = copy.deepcopy(network) if network is not None else SnakeNetwork(architecture or NetworkConfig(seed=config.seed))
+        if network is not None:self.online=copy.deepcopy(network)
+        elif architecture is not None and not isinstance(architecture,NetworkConfig):
+            from ai.model_registry import build_model
+            self.online=build_model(architecture)
+        else:self.online=SnakeNetwork(architecture or NetworkConfig(seed=config.seed))
+        self.codec=None
+        encoder=None
+        if not isinstance(self.online.config,NetworkConfig):
+            from ai.encoders import get_encoder
+            from ai.registered_networks import ObservationCodec
+            encoder=get_encoder(self.online.config.encoder_id)
+            self.codec=ObservationCodec(self.online.config)
         if any(p.device.type!='cpu' or not torch.isfinite(p).all() for p in self.online.parameters()):
             raise ValueError('Training requires finite CPU parameters')
         self.online.requires_grad_(True)
@@ -31,7 +42,7 @@ class Trainer:
         self.action_rng = random.Random(config.seed + 2)
         self.environment_rng = random.Random(config.seed + 3)
         self.torch_rng_state = torch.Generator(device='cpu').manual_seed(config.seed).get_state()
-        self.environment = Episode(config)
+        self.environment = Episode(config,encoder=encoder)
         self.at_boundary = True
         self.completed = self.total_steps = self.apples = self.collisions = self.stagnations = self.best = 0
         self.loss = self.gradient_norm = None
@@ -50,7 +61,7 @@ class Trainer:
         if explore and self.action_rng.random() < self.epsilon:
             return self.action_rng.randrange(3)
         with torch.no_grad():
-            values = self.online(torch.tensor(observation, dtype=torch.float32))
+            values = self.online(torch.tensor(observation, dtype=torch.float32) if self.codec is None else self.codec.single(observation))
         if not torch.isfinite(values).all():
             raise ValueError("Non-finite Q-values; training stopped")
         return values.argmax().item()
@@ -59,10 +70,10 @@ class Trainer:
         if len(self.replay) < self.config.batch_size:
             return None
         batch = self.replay.sample(self.config.batch_size)
-        observations = torch.tensor([t.observation for t in batch], dtype=torch.float32)
+        observations = torch.tensor([t.observation for t in batch], dtype=torch.float32) if self.codec is None else self.codec.stack([t.observation for t in batch])
         actions = torch.tensor([t.action for t in batch], dtype=torch.long)
         rewards = torch.tensor([t.reward for t in batch], dtype=torch.float32)
-        next_states = torch.tensor([t.next_observation for t in batch], dtype=torch.float32)
+        next_states = torch.tensor([t.next_observation for t in batch], dtype=torch.float32) if self.codec is None else self.codec.stack([t.next_observation for t in batch])
         done = torch.tensor([t.done for t in batch], dtype=torch.bool)
         predicted = self.online(observations).gather(1, actions[:, None]).squeeze(1)
         with torch.no_grad():

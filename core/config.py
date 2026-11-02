@@ -4,8 +4,8 @@ from dataclasses import dataclass
 import math
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "v1.5.1"
-SUBTITLE = "Frontier Training Foundations"
+VERSION = "v1.5.2"
+SUBTITLE = "Spatial Intelligence Foundations"
 BOARD_SIZE = 25
 SPEEDS = {"CASUAL": 6, "NORMAL": 9, "FAST": 13}
 

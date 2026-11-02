@@ -1,4 +1,4 @@
-"""Versioned experiment descriptions; execution remains the existing 11-input DQN."""
+"""Versioned experiment descriptions for Legacy and registered Frontier models."""
 from dataclasses import asdict, dataclass
 from datetime import datetime,timezone
 import json

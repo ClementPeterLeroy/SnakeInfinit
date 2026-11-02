@@ -16,6 +16,7 @@ from ai.experiments import Experiment,ExperimentStore,BASELINE_ENCODER
 from ai.history import HistoryStore
 from ai.profiling import Profiler,process_usage
 from ai.training_config import TrainingConfig
+from ai.model_registry import identity
 
 
 class FrontierHistory(HistoryStore):
@@ -143,9 +144,13 @@ class FrontierWorker:
                         if trainer.total_steps!=published_steps:
                             throughput.append((active,metrics['steps_per_second']))
                         # Refresh frequency is independent of record collection. Bound render/stat work.
-                        dataset=Dataset(store.identifier,name,tuple(records),architecture=trainer.online.config.sizes)
+                        dataset=Dataset(store.identifier,name,tuple(records),architecture=trainer.online.config.sizes,
+                            model_identity=identity(trainer.online.config))
                         charts={mode:aggregate.prepare((dataset,),mode) for mode in ('distribution','mean_median')}
                         published_steps=trainer.total_steps
+                    inference_seconds=profiler.seconds.get('neural_inference',0.)
+                    metrics['inferences_per_second']=(profiler.calls.get('neural_inference',0)/inference_seconds
+                        if profiler.enabled and inference_seconds else None)
             with profiler.measure('ui_synchronization'):
                 publications+=1
                 snapshot=FrontierSnapshot(status,message,metrics,charts,tuple(losses),tuple(throughput),checkpoint,model,
@@ -163,12 +168,14 @@ class FrontierWorker:
             self._trainer=trainer
             store=FrontierStore(self.output,self.profile,config,execution,name,resumed_from=resume)
             store.metadata['architecture']=trainer.online.config.to_dict()
+            model_info=identity(trainer.online.config)
+            store.metadata.update(model_info,input_count=trainer.online.config.input_size)
             atomic_json(store.root/'experiment.json',store.metadata)
             journal=FrontierHistory(store.root/'history')
             journal.register(store.identifier,name,trainer.online.config.sizes,
                 dict(training=config.to_dict(),checkpoint_run_id=store.identifier,experiment_id=store.identifier,
-                     observation_encoder='snake-classic-binary11-v1',frontier=True,resumed_from=str(resume) if resume else None))
-            experiments.save(Experiment(store.identifier,name,BASELINE_ENCODER,11,trainer.online.config.sizes,
+                     observation_encoder=model_info['encoder_id'],model_identity=model_info,frontier=True,resumed_from=str(resume) if resume else None))
+            experiments.save(Experiment(store.identifier,name,model_info['encoder_id'],trainer.online.config.input_size,trainer.online.config.sizes,
                 config.to_dict(),{key:getattr(config,key) for key in ('food_reward','collision_reward','step_reward','stagnation_reward')},
                 config.seed,tuple(range(25)),config.episodes*config.episode_cap,(store.identifier,),(),()))
             original_reset=trainer.environment.reset
@@ -280,5 +287,5 @@ class FrontierWorker:
             if store:
                 try:
                     atomic_json(store.root/'session.json',dict(status=status,message=message,profiling=profiler.report(),
-                        metrics=trainer.metrics() if trainer else {},optimizer_updates=updates))
+                        metrics=self.latest().metrics if self.latest() else {},optimizer_updates=updates))
                 finally:store.close()

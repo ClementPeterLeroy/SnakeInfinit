@@ -4,13 +4,21 @@ import random
 import torch
 from ai.environment import Episode
 from ai.training_config import TrainingConfig
+from ai.config import NetworkConfig
 
 
 class Arena:
     def __init__(self, network, config=None, seed=0, name='Model', episode=0):
         self.network=network.eval()
         self.network.requires_grad_(False)
-        self.environment=Episode(config or TrainingConfig(),seed)
+        self.codec=None
+        encoder=None
+        if not isinstance(network.config,NetworkConfig):
+            from ai.registered_networks import ObservationCodec
+            from ai.encoders import get_encoder
+            encoder=get_encoder(network.config.encoder_id)
+            self.codec=ObservationCodec(network.config)
+        self.environment=Episode(config or TrainingConfig(),seed,encoder=encoder)
         self.seed,self.name,self.checkpoint_episode=seed,name,episode
         self.rng=random.Random()
         self.running=False
@@ -52,7 +60,8 @@ class Arena:
         if self.environment.done:
             return None
         with torch.inference_mode():
-            output=self.network(torch.tensor(self.environment.observation(),dtype=torch.float32))
+            observation=self.environment.observation()
+            output=self.network(torch.tensor(observation,dtype=torch.float32) if self.codec is None else self.codec.single(observation))
         if not torch.isfinite(output).all():
             self.pause()
             raise ValueError('Non-finite Arena Q-values')

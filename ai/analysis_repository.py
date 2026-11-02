@@ -6,6 +6,7 @@ import sqlite3
 from ai.analysis_stats import Dataset,EpisodeRecord
 from ai.history import HistoryStore,legacy_dataset
 from services.checkpoint_catalog import checkpoint_roots
+from ai.model_registry import identity,parse_model_config
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,7 @@ class AnalysisRepository:
                     try:
                         if path.stat().st_size>200000:continue
                         metadata=json.loads(path.read_text(encoding='utf-8'))
-                        if metadata.get('format_version')!=1 or metadata.get('kind') not in ('resumable-boundary','model-snapshot'):continue
+                        if metadata.get('format_version') not in (1,2) or metadata.get('kind') not in ('resumable-boundary','model-snapshot'):continue
                         if type(metadata['episode']) is not int or metadata['episode']<0:continue
                         if metadata['model_identifier']!=run.name:continue
                         checkpoints.append((metadata['episode'],Choice(str(folder.resolve()),
@@ -95,15 +96,19 @@ class AnalysisRepository:
             if records and records[0].episode!=1:
                 limits=(f'Resumed session: recorded episodes start at {records[0].episode}; previous records were not migrated.',)
             return Dataset(dataset.identifier,dataset.name,records,architecture=dataset.architecture,status=dataset.status,
-                checkpoint=str(choice.checkpoint) if choice.checkpoint else None,configuration=dataset.configuration,limitations=limits)
+                checkpoint=str(choice.checkpoint) if choice.checkpoint else None,configuration=dataset.configuration,limitations=limits,model_identity=dataset.model_identity)
         if choice.kind=='checkpoint':
             metadata=json.loads((choice.source/'training.json').read_text(encoding='utf-8'))
             if metadata.get('experiment_id') and metadata.get('history_root'):
                 journal=HistoryStore(Path(metadata['history_root'])).load(metadata['history_run'])
+                config=parse_model_config(metadata)
+                info=identity(config)
+                if journal.architecture!=config.sizes or journal.model_identity and journal.model_identity['encoder_id']!=info['encoder_id']:
+                    raise ValueError('History and checkpoint architecture/encoder do not match')
                 records=tuple(r for r in journal.records if r.episode<=choice.episode)
                 return replace(journal,identifier=choice.identifier,name=choice.model_name,
                     records=records,checkpoint=str(choice.checkpoint),checkpoint_episode=choice.episode,
-                    status='Training history through checkpoint',
+                    status='Training history through checkpoint',model_identity=info,
                     limitations=('Frontier recorded training episodes through this checkpoint; not frozen evaluation data.',))
             dataset=legacy_dataset(choice.source)
             # Bound every history to this immutable snapshot. Enrich only with
@@ -131,6 +136,6 @@ class AnalysisRepository:
             return Dataset(choice.identifier,model['name'],records,kind='evaluation',architecture=tuple(model['architecture']),
                 status='Frozen greedy evaluation',checkpoint=model['checkpoint'],
                 configuration={'evaluation':data['configuration'],'evaluation_seeds':data['seeds']},
-                checkpoint_episode=model['training_episode'],
+                checkpoint_episode=model['training_episode'],model_identity=model.get('model_identity'),
                 limitations=('Evaluation seeds/settings are recorded; these records are not exploratory training episodes.',))
         raise ValueError('Unknown analysis dataset')

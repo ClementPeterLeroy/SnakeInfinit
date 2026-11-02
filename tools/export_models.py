@@ -19,7 +19,7 @@ def export_model(source,destination,*,training=None):
         raise ValueError('Invalid model metadata')
     metadata=json.loads(metadata_path.read_text(encoding='utf-8'))
     filename=metadata.get('weights_file','')
-    if metadata.get('format_version')!=1 or not re.fullmatch(r'weights-[0-9a-f]{32}\.pt',filename):
+    if metadata.get('format_version') not in (1,2) or not re.fullmatch(r'weights-[0-9a-f]{32}\.pt',filename):
         raise ValueError('Unsupported model metadata')
     weights=source/filename
     if weights.is_symlink() or weights.stat().st_size>8000000:
@@ -53,7 +53,7 @@ def export_latest(profile,destination):
     for path in sorted(paths):
         if path.is_symlink() or path.stat().st_size>200000:continue
         data=json.loads(path.read_text(encoding='utf-8'))
-        if data.get('format_version')!=1 or data.get('kind') not in ('resumable-boundary','model-snapshot'):continue
+        if data.get('format_version') not in (1,2) or data.get('kind') not in ('resumable-boundary','model-snapshot'):continue
         run=data['model_identifier']
         if not isinstance(run,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,40}',run):
             raise ValueError('Invalid model run identifier')

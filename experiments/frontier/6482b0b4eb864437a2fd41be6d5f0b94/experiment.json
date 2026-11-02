@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "application_version": "v1.5.2",
+  "experiment_id": "6482b0b4eb864437a2fd41be6d5f0b94",
+  "name": "Snake DQN Frontier Distance",
+  "encoder_id": "snake-distance19-v1",
+  "input_count": 19,
+  "training": {
+    "episodes": 10000,
+    "learning_rate": 0.001,
+    "gamma": 0.99,
+    "replay_capacity": 100000,
+    "batch_size": 64,
+    "epsilon_start": 1.0,
+    "epsilon_min": 0.05,
+    "epsilon_decay_steps": 100000,
+    "target_sync": 1000,
+    "checkpoint_interval": 500,
+    "seed": 0,
+    "food_reward": 10.0,
+    "collision_reward": -10.0,
+    "step_reward": -0.01,
+    "stagnation_reward": -5.0,
+    "stagnation_factor": 100,
+    "episode_cap": 10000,
+    "gradient_clip": 10.0
+  },
+  "execution": {
+    "refresh_episodes": 100,
+    "headless": true,
+    "recovery_interval": 1000,
+    "recovery_slots": 2,
+    "milestones": [
+      1000,
+      3000,
+      5000,
+      10000
+    ],
+    "profiling": false
+  },
+  "training_seed": 0,
+  "evaluation_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24
+  ],
+  "environment_step_budget": 100000000,
+  "resumed_from": null,
+  "created_utc": "2026-11-02T08:48:10.595823+00:00",
+  "history_root": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\history",
+  "checkpoint_root": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\checkpoints",
+  "resume_strategy": "Completed-episode boundary; replay, optimizer and RNG retained. Partial episodes are not serialized.",
+  "architecture": {
+    "configuration_id": "B",
+    "hidden_sizes": [
+      64,
+      32
+    ],
+    "seed": 0,
+    "architecture_id": "mlp_distance19",
+    "encoder_id": "snake-distance19-v1",
+    "schema_version": 1
+  },
+  "model_configuration_id": "B",
+  "architecture_id": "mlp_distance19",
+  "architecture_name": "Distance-aware MLP",
+  "encoder_name": "Eight-direction distance sensing",
+  "network_family": "MLP",
+  "architecture_schema_version": 1,
+  "encoder_schema_version": 1,
+  "architecture_parameters": {
+    "input_features": 19,
+    "hidden_sizes": [
+      64,
+      32
+    ],
+    "activation": "relu",
+    "outputs": 3
+  },
+  "actions": [
+    "Straight",
+    "Turn left",
+    "Turn right"
+  ],
+  "encoder_configuration": {
+    "board_width": 25,
+    "board_height": 25,
+    "normalization": "Consecutive free cells / 24; static body including tail; food is not an obstacle"
+  },
+  "input_shape": [
+    19
+  ],
+  "parameter_count": 3459
+}

@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.5.2 — Spatial Intelligence Foundations
+
+- Add separate architecture and observation-encoder registries with validated, versioned identities.
+- Add distance19 MLP, binary CNN and ordered-body CNN configurations alongside the original 355-parameter DQN.
+- Support structured spatial/heading replay, batched learning, target synchronization and exact boundary recovery.
+- Integrate all four configurations with Frontier selection, portable models, Arena, frozen evaluation, Analysis and CSV metadata.
+- Preserve legacy model formats, gameplay, learning equations, rewards and training defaults.
+- Document exact layers/encodings, controlled research methodology, measured CPU pilots and the research roadmap.
+- Add compatibility, geometry, persistence, optimization, UI and end-to-end regression coverage.
+
 ## v1.5.1 — Frontier Training Foundations
 
 - Add Legacy / Frontier Training navigation while preserving the existing Legacy

@@ -99,7 +99,7 @@ class HistoryStore:
         with closing(sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
             records=tuple(EpisodeRecord(*row) for row in db.execute('SELECT * FROM episodes WHERE run_id=? ORDER BY episode',(run,)))
         return Dataset(metadata['identifier'],metadata['name'],records,architecture=metadata['architecture'],
-                       status=metadata['status'],configuration=metadata['configuration'])
+                       status=metadata['status'],configuration=metadata['configuration'],model_identity=metadata['configuration'].get('model_identity'))
 
 
 def legacy_dataset(folder):

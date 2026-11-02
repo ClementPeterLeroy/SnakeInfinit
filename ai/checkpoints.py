@@ -16,6 +16,7 @@ from ai.environment import Transition
 from ai.dqn import Trainer
 from services.userdata import user_data_dir
 from services.checkpoint_catalog import checkpoint_roots
+from ai.model_registry import ModelSpec,identity,parse_model_config
 
 REASONS = (None, 'wall_collision','self_collision','stagnation','episode_step_limit','board_completion')
 
@@ -73,9 +74,11 @@ class CheckpointStore:
         # Existing destinations are never overwritten, including incomplete saves.
         folder = models.save(checkpoint, trainer.online,reinforcement_learning=True)
         replay = trainer.replay.items
+        observations=trainer.codec.pack([t.observation for t in replay]) if trainer.codec else torch.tensor([t.observation for t in replay],dtype=torch.uint8).reshape(-1,11)
+        next_observations=trainer.codec.pack([t.next_observation for t in replay]) if trainer.codec else torch.tensor([t.next_observation for t in replay],dtype=torch.uint8).reshape(-1,11)
         state = dict(target=trainer.target.state_dict(), optimizer=trainer.optimizer.state_dict(),
-            observations=torch.tensor([t.observation for t in replay],dtype=torch.uint8).reshape(-1,11),
-            next_observations=torch.tensor([t.next_observation for t in replay],dtype=torch.uint8).reshape(-1,11),
+            observations=observations,
+            next_observations=next_observations,
             actions=torch.tensor([t.action for t in replay],dtype=torch.int64),
             rewards=torch.tensor([t.reward for t in replay],dtype=torch.float64),
             flags=torch.tensor([(t.terminated,t.truncated) for t in replay],dtype=torch.bool).reshape(-1,2),
@@ -88,12 +91,13 @@ class CheckpointStore:
             cumulative_reward=trainer.cumulative_reward,last_reason=trainer.last_reason)
         resume = folder/'training.pt'
         torch.save(state,resume)
-        metadata = dict(format_version=1, kind='resumable-boundary', model_identifier=run, model_name=name,
+        metadata = dict(format_version=2 if trainer.codec else 1, kind='resumable-boundary', model_identifier=run, model_name=name,
             architecture=trainer.online.config.to_dict(), episode=trainer.completed, environment_steps=trainer.total_steps,
             epsilon=trainer.epsilon, hyperparameters=trainer.config.to_dict(),
             metrics=trainer.metrics(), created_utc=datetime.now(timezone.utc).isoformat(),
             torch_version=str(torch.__version__), sha256=hashlib.sha256(resume.read_bytes()).hexdigest(),
             truncation_convention='finite episodic return; no bootstrap for termination or truncation')
+        metadata.update(identity(trainer.online.config))
         temporary = folder/'training.json.tmp'
         temporary.write_text(json.dumps(metadata,indent=2,allow_nan=False),encoding='utf-8')
         temporary.replace(folder/'training.json')  # Library visibility commits last.
@@ -113,7 +117,7 @@ class CheckpointStore:
         folder = self._folder(folder)
         model, _ = ModelStore(folder.parent).load(folder.name)
         data = self.metadata(folder)
-        if model.config != NetworkConfig.from_dict(data['architecture']):
+        if model.config != parse_model_config(data):
             raise ValueError("Checkpoint architecture metadata mismatch")
         return model, data
 
@@ -123,10 +127,10 @@ class CheckpointStore:
         if path.is_symlink() or path.stat().st_size > 200000:
             raise ValueError("Invalid checkpoint metadata")
         data = json.loads(path.read_text(encoding='utf-8'))
-        if not isinstance(data,dict) or data.get('format_version') != 1 or data.get('kind') not in ('resumable-boundary','model-snapshot'):
+        if not isinstance(data,dict) or data.get('format_version') not in (1,2) or data.get('kind') not in ('resumable-boundary','model-snapshot'):
             raise ValueError("Unsupported checkpoint format")
         config=TrainingConfig.from_dict(data.get('hyperparameters'))
-        NetworkConfig.from_dict(data.get('architecture'))
+        parse_model_config(data)
         if (data.get('model_identifier')!=folder.parent.name or not isinstance(data.get('model_name'),str)
                 or not 1<=len(data['model_name'])<=40
                 or type(data.get('episode')) is not int or not 0<=data['episode']<=config.episodes
@@ -154,21 +158,25 @@ class CheckpointStore:
             trainer = Trainer(TrainingConfig.from_dict(metadata['hyperparameters']),network=model)
             trainer.target.load_state_dict(validated_weights(trainer.target,state['target']))
             n = len(state['actions'])
-            specs = dict(observations=((n,11),torch.uint8), next_observations=((n,11),torch.uint8),
-                actions=((n,),torch.int64),rewards=((n,),torch.float64),flags=((n,2),torch.bool))
+            specs = dict(actions=((n,),torch.int64),rewards=((n,),torch.float64),flags=((n,2),torch.bool))
+            if trainer.codec:
+                observations=trainer.codec.unpack(state['observations'],n)
+                next_observations=trainer.codec.unpack(state['next_observations'],n)
+            else:
+                specs.update(observations=((n,11),torch.uint8),next_observations=((n,11),torch.uint8))
             if n > trainer.config.replay_capacity or len(state['reasons']) != n:
                 raise ValueError("Invalid replay capacity")
             for key,(shape,dtype) in specs.items():
                 value=state[key]
                 if not isinstance(value,torch.Tensor) or value.shape != shape or value.dtype != dtype or not torch.isfinite(value).all():
                     raise ValueError("Invalid replay tensor: " + key)
-            if ((state['observations'] > 1).any() or (state['next_observations'] > 1).any()
+            if ((not trainer.codec and ((state['observations'] > 1).any() or (state['next_observations'] > 1).any()))
                     or (state['actions'] < 0).any() or (state['actions'] > 2).any()
                     or any(reason not in REASONS for reason in state['reasons'])):
                 raise ValueError("Invalid replay values")
             for i in range(n):
-                trainer.replay.append(Transition(tuple(state['observations'][i].tolist()),int(state['actions'][i]),
-                    float(state['rewards'][i]),tuple(state['next_observations'][i].tolist()),
+                trainer.replay.append(Transition(observations[i] if trainer.codec else tuple(state['observations'][i].tolist()),int(state['actions'][i]),
+                    float(state['rewards'][i]),next_observations[i] if trainer.codec else tuple(state['next_observations'][i].tolist()),
                     bool(state['flags'][i,0]),bool(state['flags'][i,1]),state['reasons'][i]))
             position = state['replay_position']
             if type(position) is not int or not 0 <= position < trainer.config.replay_capacity:

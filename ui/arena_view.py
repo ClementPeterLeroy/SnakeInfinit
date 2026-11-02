@@ -6,6 +6,7 @@ import pygame
 from ai.arena import Arena
 from ai.checkpoints import CheckpointStore
 from ai.training_config import TrainingConfig
+from ai.model_registry import identity,parse_model_config
 from ui.ai_components import FormView, draw_board
 from ui.components import BG,GREEN,TEXT,MUTED,label
 
@@ -142,8 +143,8 @@ class ArenaView(FormView):
                         self.selection_metadata=self.store.metadata(entry['path'])
                         self.metadata_key=entry['path']
                     metadata=self.selection_metadata
-                    arch=metadata['architecture']
-                    label(surface,'Architecture: 11 > '+' > '.join(map(str,arch['hidden_sizes']))+' > 3 / '+arch['activation'],(80,330),22,TEXT,False)
+                    info=identity(parse_model_config(metadata))
+                    label(surface,info['architecture_name']+' / '+info['encoder_name'],(80,330),20,TEXT,False)
                     label(surface,f"Training episode {metadata['episode']} / environment steps {metadata['environment_steps']}",(80,375),20,MUTED,False)
                 except (ValueError,OSError,KeyError) as error:
                     self.status=str(error)
@@ -159,6 +160,8 @@ class ArenaView(FormView):
                 'Last termination: '+str(arena.last_reason or '--'),
                 'GAME OVER: '+str(arena.environment.reason) if arena.environment.done else ('PLAYING' if arena.running else 'PAUSED'),
                 'Greedy / frozen weights / CPU']
+            info=identity(arena.network.config)
+            label(surface,info['architecture_name']+' / '+info['encoder_name'],(800,420),13,MUTED,False)
             for index,line in enumerate(lines):
                 label(surface,line[:55],(800,130+index*32),19,GREEN if index in (0,7) else TEXT,False)
             label(surface,'Reset seed:',(800,455),17,MUTED,False)

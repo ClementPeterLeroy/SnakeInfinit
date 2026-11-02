@@ -168,6 +168,7 @@ class NeuralView:
 
     def load_checkpoint(self,path):
         model,metadata=self.checkpoints.load_model(path)
+        if not isinstance(model.config,NetworkConfig):raise ValueError('Use Frontier and Arena for registered models; neuron editing supports the legacy 11-input MLP')
         self.live.stop()
         self.lab.replace_network(model)
         self.loaded_checkpoint=metadata
@@ -245,6 +246,7 @@ class NeuralView:
                 self.load_checkpoint(value)
             else:
                 network, metadata = self.store.load(value)
+                if not isinstance(network.config,NetworkConfig):raise ValueError('Registered models use Frontier and Arena; legacy neuron editing requires 11 inputs')
                 self.lab.replace_network(network)
                 self.loaded_checkpoint=None
                 self.live.model_label='UNTRAINED'

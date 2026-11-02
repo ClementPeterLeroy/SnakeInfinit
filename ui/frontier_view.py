@@ -1,5 +1,6 @@
 """Frontier configuration and snapshot-driven headless training dashboard."""
 import copy
+import json
 import os
 import subprocess
 import sys
@@ -17,6 +18,7 @@ from ui.ai_components import FormView,chart
 from ui.analysis_view import AnalysisView
 from ui.analysis_chart import AnalysisChart
 from ui.components import BG,PANEL,GREEN,TEXT,MUTED,label
+from ai.model_registry import model_spec,LINEUP,identity,parse_model_config
 
 
 class FrontierView(FormView):
@@ -32,6 +34,7 @@ class FrontierView(FormView):
         self.advanced=False
         self.advanced_page=0
         self.source='new'
+        self.model_configuration='A'
         self.selected=0
         self.refresh=100
         self.headless=True
@@ -56,11 +59,30 @@ class FrontierView(FormView):
     def configuration(self):
         defaults=TrainingConfig().to_dict()
         config=TrainingConfig(**{key:int(self.text[key]) if type(value) is int else float(self.text[key]) for key,value in defaults.items()})
-        architecture=NetworkConfig(tuple(int(v.strip()) for v in self.text['hidden'].split(',')),self.text['activation'],config.seed)
+        if self.source=='new' and self.model_configuration!='A':
+            hidden=tuple(int(v.strip()) for v in self.text['hidden'].split(',')) if self.model_configuration=='B' else None
+            if self.text['activation']!='relu':raise ValueError('Registered distance/CNN architectures use ReLU')
+            architecture=model_spec(self.model_configuration,config.seed,hidden)
+        else:architecture=NetworkConfig(tuple(int(v.strip()) for v in self.text['hidden'].split(',') if v.strip()) or (16,8),self.text['activation'],config.seed)
         execution=FrontierConfig(self.refresh,self.headless,int(self.text['recovery_interval']),int(self.text['recovery_slots']),profiling=self.profiling)
         if not 1<=len(self.text['name'].strip())<=40:raise ValueError('Model name must contain 1..40 characters')
         if not self.text['output'].strip():raise ValueError('Choose an experiment output directory')
         return config,architecture,execution
+
+    def advanced_keys(self):
+        keys=[k for k in TrainingConfig().to_dict() if k not in ('episodes','seed','checkpoint_interval')]
+        if self.source=='new' and self.model_configuration in ('A','B'):keys+=['hidden','activation']
+        return keys
+
+    def model_info(self):
+        if self.source=='new':return identity(self.configuration()[1])
+        if self.source=='lab':return identity(self.lab_provider().network.config)
+        if self.source=='resume':
+            entries=self.entries()
+            if not entries:return None
+            return identity(parse_model_config(self.store.metadata(entries[self.selected%len(entries)]['path'])))
+        metadata=json.loads((self.models.path(self.source)/'network.json').read_text(encoding='utf-8'))
+        return identity(parse_model_config(metadata))
 
     def layout(self):
         self.buttons,self.fields=[],{}
@@ -72,15 +94,17 @@ class FrontierView(FormView):
             return
         if self.page=='config':
             if self.advanced:
-                keys=[k for k in TrainingConfig().to_dict() if k not in ('episodes','seed','checkpoint_interval')]+['hidden','activation']
+                keys=self.advanced_keys()
                 for index,key in enumerate(keys[self.advanced_page*12:(self.advanced_page+1)*12]):
                     column,row=index//6,index%6
                     self.field(key,24+column*620,199+row*60,580)
                 self.button('BASIC',24,120,180,'advanced')
                 self.button('ADVANCED PAGE '+str(self.advanced_page+1),220,120,300,'advanced_page')
             else:
-                self.button('MODEL: '+self.source,24,120,600,'source')
-                self.button('ADVANCED DQN',650,120,300,'advanced')
+                self.button('SOURCE: '+self.source,24,120,300,'source')
+                title=self.model_configuration+': '+LINEUP[self.model_configuration][0] if self.source=='new' else 'ARCHITECTURE / ENCODER FROM SAVED MODEL'
+                self.button(title,334,120,600,'model_configuration')
+                self.button('ADVANCED DQN',960,120,270,'advanced')
                 for key,x,y,width in (('name',24,210,580),('episodes',24,285,270),('seed',334,285,270),
                     ('recovery_interval',650,285,270),('recovery_slots',960,285,270),('output',24,457,1206)):
                     self.field(key,x,y,width)
@@ -111,6 +135,12 @@ class FrontierView(FormView):
             elif action=='source':
                 choices=['new','lab',*self.models.names(),'resume']
                 self.source=choices[(choices.index(self.source)+1)%len(choices)]
+            elif action=='model_configuration':
+                if self.source!='new':raise ValueError('Saved models restore their own architecture and encoder. Choose new to select A/B/C/D.')
+                keys=tuple(LINEUP)
+                self.model_configuration=keys[(keys.index(self.model_configuration)+1)%4]
+                self.text['hidden']=','.join(map(str,LINEUP[self.model_configuration][3]))
+                self.text['activation']='relu'
             elif action=='select':self.selected+=1
             elif action=='advanced':self.advanced=not self.advanced
             elif action=='advanced_page':self.advanced_page=1-self.advanced_page
@@ -231,14 +261,20 @@ class FrontierView(FormView):
             return
         if self.page=='config':
             if self.advanced:
-                keys=[k for k in TrainingConfig().to_dict() if k not in ('episodes','seed','checkpoint_interval')]+['hidden','activation']
+                keys=self.advanced_keys()
                 for index,key in enumerate(keys[self.advanced_page*12:(self.advanced_page+1)*12]):
                     label(surface,key.replace('_',' ').title(),(24+(index//6)*620,178+(index%6)*60),15,TEXT,False)
             else:
+                try:
+                    info=self.model_info()
+                    if info:
+                        shape='3x25x25 + heading4' if isinstance(info['input_shape'],dict) else str(info['input_shape'])
+                        label(surface,f"{info['architecture_name']} / {info['encoder_name']} / {shape} / {info['parameter_count']:,} parameters",(24,163),13,GREEN,False)
+                except (ValueError,TypeError,OSError):pass
                 for title,x,y in (('MODEL NAME',24,185),('EPISODE BUDGET',24,260),('SEED',334,260),
                     ('RECOVERY INTERVAL (EP)',650,260),('ROTATING SLOTS',960,260),('EXPERIMENT OUTPUT DIRECTORY',24,432)):
                     label(surface,title,(x,y),14,MUTED,False)
-                label(surface,'Defaults: 11 → 16 → 8 → 3 / existing DQN. Milestones: 1k, 3k, 5k, 10k; final always saved.',(24,572),16,TEXT,False)
+                label(surface,'A: Legacy11 / B: Distance19 / C: Binary CNN / D: Ordered CNN. Same DQN defaults; CPU / 1 environment.',(24,572),15,TEXT,False)
                 label(surface,'Resume restores saved learning settings and RNG streams; only the episode target may extend.',(24,602),14,MUTED,False)
             self.draw_fields(surface)
         else:

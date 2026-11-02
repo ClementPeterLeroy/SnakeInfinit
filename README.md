@@ -1,6 +1,6 @@
 # SNAKE INFINITE
 
-**v1.5.1 — Frontier Training Foundations**
+**v1.5.2 — Spatial Intelligence Foundations**
 
 A minimalist Python/Pygame arcade game with Classic, Arcade, five challenges,
 official startup branding, and local records. Built on the existing v1.0/v1.1
@@ -17,8 +17,27 @@ PyTorch remains optional for ordinary arcade play.
 
 Open **AI → Training Center**, then choose **LEGACY TRAINING** for the existing
 Configuration/Dashboard/Analysis tools or **FRONTIER TRAINING** for the headless
-workflow. Frontier reuses the existing 11-input CPU DQN and learning settings;
-there is one environment, no CUDA, no parallel environments and no new encoder.
+workflow. Frontier offers four model configurations using the same CPU DQN and
+learning defaults. There is one environment, with optional profiling and no CUDA.
+
+| Configuration | Architecture / observation | Parameters |
+| --- | --- | ---: |
+| A — Legacy DQN | 11 → 16 → 8 → 3; original binary features | 355 |
+| B — Distance DQN | 19 → 64 → 32 → 3; original features + eight distances | 3,459 |
+| C — Binary CNN | Compact CNN; body/head/food planes + heading | 188,419 |
+| D — Ordered CNN | Same CNN; ordered body/head/food planes + heading | 188,419 |
+
+Choose A/B/C/D in Frontier Configuration. Architecture, encoder, input shape and
+parameter count appear below the selector. Advanced DQN exposes B's two or three
+hidden-layer widths (ReLU). Existing models restore their own architecture and
+encoder. The original Neural Laboratory and Legacy Training retain their existing
+11-input inspection and customization workflows. All four families work in Arena,
+frozen evaluation, Analysis comparisons and CSV exports.
+
+See [architecture and persistence](docs/spatial-architecture.md),
+[research chapters and roadmap](docs/ai-research.md),
+[v1.5.2 release notes](docs/releases/v1.5.2.md), and
+[measured validation](docs/spatial-validation.md).
 
 Frontier defaults to 10,000 episodes, seed 0, headless execution and Dashboard
 refresh every 100 episodes (25/100/500 available). Advanced configuration exposes
@@ -102,8 +121,9 @@ weights. Existing v1.4 checkpoints remain read-only and resumable: bounded raw
 scores/lengths/rewards can be inspected, but unrecorded episode reasons, step
 counts, epsilon and times cannot be recovered. No automatic migration occurs.
 Experiment metadata records encoders, dimensions, configurations, seeds, budgets,
-runs, checkpoints and evaluations. Only **Experiment A: baseline 11 inputs** is
-executable; future 13/16/19-input experiments remain planned.
+runs, checkpoints and evaluations. Frontier executes the four configurations
+above; the earlier 13/16-feature and alternative 19-feature research proposals
+remain deferred ideas, distinct from this release's distance19 model.
 
 See [v1.5.0 release notes](docs/releases/v1.5.0.md) for controls, calculation
 conventions, compatibility limits and manual checks, and
@@ -726,5 +746,6 @@ target synchronization, gradient clipping, numerical failures, exact resumable
 checkpoints, worker control/shutdown and frozen Arena evaluation. End-to-end
 validation evaluates the initial and reloaded trained model on the same 20 seeds.
 
-Next: **v1.5**, focusing on deeper AI diagnostics, learning-curve analysis,
-architecture comparisons and advanced model evaluation.
+Next: **v1.5.3 — Parallel Frontier Training**, then **v1.5.4 — CUDA & Frontier
+Optimization**, **v1.5.5 — Benchmark Laboratory**, and **v1.6.x — Neural Intelligence
+Research**. See the [preserved research roadmap](docs/ai-research.md#roadmap).

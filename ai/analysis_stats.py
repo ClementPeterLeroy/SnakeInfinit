@@ -32,9 +32,11 @@ class Dataset:
     limitations: tuple[str,...] = ()
     configuration: dict | None = None
     checkpoint_episode: int | None = None
+    model_identity: dict | None = None
 
     @property
     def parameter_count(self):
+        if self.model_identity:return self.model_identity['parameter_count']
         return sum((a+1)*b for a,b in zip(self.architecture,self.architecture[1:]))
 
 

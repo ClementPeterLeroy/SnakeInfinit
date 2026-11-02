@@ -16,6 +16,8 @@ from ai.experiments import BASELINE_ENCODER
 from ai.network import SnakeNetwork
 from ai.persistence import ModelStore
 from core.config import VERSION
+from ai.model_registry import ModelSpec,identity,parse_model_config,build_model,LINEUP
+from ai.encoders import get_encoder
 
 
 def atomic_json(path,data):
@@ -58,16 +60,17 @@ class FrontierStore:
             raise
 
     def details(self,trainer):
-        return dict(experiment_id=self.identifier,observation_encoder=BASELINE_ENCODER,
+        info=identity(trainer.online.config)
+        return dict(experiment_id=self.identifier,observation_encoder=info['encoder_id'],
             history_root=str(self.root/'history'),history_run=self.identifier,
-            architecture=trainer.online.config.to_dict(),resume_strategy=self.metadata['resume_strategy'])
+            architecture=trainer.online.config.to_dict(),resume_strategy=self.metadata['resume_strategy'],**info)
 
     def snapshot(self,trainer):
         """Light model-only snapshot, plus compatible Arena/Analysis library metadata."""
         folder=ModelStore(self.checkpoints.root/self.identifier).save(
             f'episode-{trainer.completed:07d}-{uuid4().hex[:8]}',trainer.online,reinforcement_learning=True)
         network=json.loads((folder/'network.json').read_text(encoding='utf-8'))
-        metadata=dict(format_version=1,kind='model-snapshot',model_identifier=self.identifier,model_name=self.name,
+        metadata=dict(format_version=2 if trainer.codec else 1,kind='model-snapshot',model_identifier=self.identifier,model_name=self.name,
             episode=trainer.completed,environment_steps=trainer.total_steps,epsilon=trainer.epsilon,
             hyperparameters=trainer.config.to_dict(),metrics=trainer.metrics(),created_utc=datetime.now(timezone.utc).isoformat(),
             sha256=network['sha256'],**self.details(trainer))
@@ -80,16 +83,19 @@ class FrontierStore:
 
     def publish_model(self,folder,episode):
         metadata=json.loads((folder/'network.json').read_text(encoding='utf-8'))
+        checkpoint_metadata=json.loads((folder/'training.json').read_text(encoding='utf-8'))
         root=self.root/'models'
         root.mkdir(exist_ok=True)
         # Every snapshot is immutable, including repeated saves at the same episode.
-        basename=f'snake_dqn_11_ep{episode:06d}_model'
+        prefix=LINEUP[metadata.get('model_configuration_id','A')][4]
+        basename=f'{prefix}_ep{episode:06d}_model'
         path=root/(basename+'.pt')
         if path.exists():path=root/(basename+'_'+uuid4().hex[:8]+'.pt')
         with path.open('xb') as stream:
             stream.write((folder/metadata['weights_file']).read_bytes());stream.flush();os.fsync(stream.fileno())
         atomic_json(path.with_suffix('.json'),{**metadata,'experiment_id':self.identifier,'model_name':self.name,
-            'observation_encoder':BASELINE_ENCODER,'episode':episode,'weights_file':path.name})
+            'observation_encoder':metadata.get('encoder_id',BASELINE_ENCODER),'episode':episode,
+            'environment_steps':checkpoint_metadata['environment_steps'],'weights_file':path.name})
         load_published_model(path)  # Verify checksum, shapes and actual reload before reporting success.
         return path
 
@@ -100,7 +106,7 @@ class FrontierStore:
         atomic_json(folder/'training.json',{**metadata,**self.details(trainer)})
         self.checkpoints.load_model(folder)
         # Descriptive resume-state filename accompanies canonical network/config files.
-        descriptive=folder/f'snake_dqn_11_ep{trainer.completed:06d}_checkpoint.pt'
+        descriptive=folder/f"{LINEUP[metadata['model_configuration_id']][4]}_ep{trainer.completed:06d}_checkpoint.pt"
         try:os.link(folder/'training.pt',descriptive)
         except OSError:shutil.copyfile(folder/'training.pt',descriptive)
         if kind=='recovery':
@@ -131,9 +137,11 @@ def load_published_model(path):
     metadata_path=path.with_suffix('.json')
     if metadata_path.is_symlink() or metadata_path.stat().st_size>64000:raise ValueError('Invalid model metadata')
     metadata=json.loads(metadata_path.read_text(encoding='utf-8'))
-    if metadata.get('format_version')!=1 or metadata.get('weights_file')!=path.name:raise ValueError('Invalid model metadata')
-    if metadata.get('features')!=list(FEATURE_NAMES) or metadata.get('actions')!=list(ACTION_NAMES):raise ValueError('Incompatible observation/action metadata')
+    if metadata.get('weights_file')!=path.name:raise ValueError('Invalid model metadata')
+    config=parse_model_config(metadata)
+    features=list(get_encoder(config.encoder_id).ordering) if isinstance(config,ModelSpec) else list(FEATURE_NAMES)
+    if metadata.get('features')!=features or metadata.get('actions')!=list(ACTION_NAMES):raise ValueError('Incompatible observation/action metadata')
     if hashlib.sha256(path.read_bytes()).hexdigest()!=metadata['sha256']:raise ValueError('Model checksum mismatch')
-    model=SnakeNetwork(NetworkConfig.from_dict(metadata['architecture']))
+    model=build_model(config) if isinstance(config,ModelSpec) else SnakeNetwork(config)
     model.load_state_dict(validated_weights(model,torch.load(path,map_location='cpu',weights_only=True)))
     return model.eval(),metadata

@@ -17,8 +17,20 @@ Each training export includes:
 - `weights-....pt`: original PyTorch network weights.
 - `model_card.json`: training episode, step count, configuration and provenance.
 
-These are portable inference models. Full resumable checkpoints, replay memory,
-optimizer state and live training histories remain in the local user-data library.
+These are portable inference models. The export tool supports historical 11-input
+models and v1.5.2 registered distance/spatial models. Keep architecture/encoder
+metadata with its matching weights.
+
+Frontier also publishes shareable model pairs directly under
+`experiments/frontier/<experiment-id>/models/`, with descriptive prefixes for
+Legacy11, Distance19, Binary CNN and Ordered CNN. Those `.pt` and matching `.json`
+files include episode, training-step count, experiment and model identities.
+Use **OPEN EXPERIMENT FILES** to find them. See
+[artifact formats](../docs/spatial-architecture.md#artifacts-and-compatibility).
+
+Full resumable checkpoints, replay memory, optimizer state and live training
+histories stay in the run's checkpoint/history directories (Frontier) or the local
+user-data library (Legacy). The lightweight exports do not resume training.
 Export folders are snapshots; run the command again to add a later episode. An
 existing identical export is reused; different existing contents are never overwritten.
 

@@ -23,21 +23,30 @@ class Transition:
 
 
 class Episode:
-    def __init__(self, config=TrainingConfig(), seed=0):
+    def __init__(self, config=TrainingConfig(), seed=0,encoder=None):
         self.config = config
         self.game = Game(seed=seed)
         self.steps = self.without_food = 0
         self.done = False
         self.reason = None
         self.total_reward = 0.
+        self.encoder=encoder
+        self._encoded_step=None
+        self._encoded=None
 
     def reset(self, seed):
+        self._encoded_step=None
         self.game.reset(seed)
         self.steps = self.without_food = 0
         self.done, self.reason, self.total_reward = False, None, 0.
         return self.observation()
 
     def observation(self):
+        if self.encoder is not None:
+            if self._encoded_step!=self.steps:
+                self._encoded=self.encoder.encode(self.game.get_state())
+                self._encoded_step=self.steps
+            return self._encoded
         return encode_observation(self.game.get_state())
 
     def step(self, action):

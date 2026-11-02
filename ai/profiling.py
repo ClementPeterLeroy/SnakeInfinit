@@ -35,15 +35,30 @@ class Profiler:
 
     def attach(self,trainer):
         if not self.enabled:return
+        choosing=False
+        original_choose=trainer.choose_action
+        original_forward=trainer.online.forward
+        def forward(*args,**kwargs):
+            if choosing:
+                with self.measure('neural_inference'):return original_forward(*args,**kwargs)
+            return original_forward(*args,**kwargs)
+        def choose(*args,**kwargs):
+            nonlocal choosing
+            choosing=True
+            try:
+                with self.measure('action_selection'):return original_choose(*args,**kwargs)
+            finally:choosing=False
+        trainer.online.forward=forward
+        trainer.choose_action=choose
         for instance,method,name in ((trainer.environment,'observation','state_encoding'),
-            (trainer.environment,'step','environment_step'),(trainer,'choose_action','neural_inference'),
+            (trainer.environment,'step','environment_step'),
             (trainer.replay,'sample','replay_sampling'),(trainer,'optimize','forward_backward'),
             (trainer.optimizer,'step','optimizer_update')):
             self.wrap(instance,method,name)
 
     def report(self):
         return {name:dict(seconds=self.seconds.get(name,0.),calls=self.calls.get(name,0)) for name in
-            ('environment_step','state_encoding','neural_inference','replay_sampling','forward_backward',
+            ('environment_step','state_encoding','action_selection','neural_inference','replay_sampling','forward_backward',
              'optimizer_update','metrics_aggregation','checkpoint_serialization','ui_synchronization')}
 
 
