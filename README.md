@@ -23,7 +23,12 @@ training data remain in the application-data profile.
 
 Training Center now contains **Configuration | Dashboard | Analysis**. Analysis
 loads saved training journals, legacy checkpoint histories, and frozen evaluation
-results. Select Model A and optionally Model B; selectors cycle the local library.
+results. Model A is required; Model B defaults to **None — single model**.
+Each selected model has an independent selector of its actual saved checkpoints,
+so two checkpoints of the same model can be compared. The DATA selector explicitly
+chooses training history through that checkpoint or an existing frozen evaluation.
+Model B's checkpoint control and data disappear when it is deselected. Click the
+selectors to cycle available models, checkpoints and recorded data sources.
 
 - **Distribution** (default): true min/max whiskers, Q1–Q3 boxes, median lines and
   optional mean dots. Choose groups of 25, 50, 100, 250 or 500 episodes.
@@ -40,8 +45,11 @@ Training scores include exploration and are not definitive policy rankings.
 **Evaluate Frozen** runs 25/100/500 or a custom number of greedy Arena games in
 the background. Both checkpoints use identical seeds and explicit shared episode
 limits/rewards. Click again to cancel. Evaluation results stay separate from
-training data. **Export CSV** writes raw or grouped data for the selected range
-or full history, with UTF-8 names, blank missing values and metadata sidecars.
+training data. **EXPORT RAW** and **EXPORT GROUPED** write the selected range or
+full history, with UTF-8 contents, blank missing values and metadata sidecars.
+Windows-compatible filenames identify model names, actual selected checkpoints,
+export type/grouping and both sides of comparisons. Repeated exports receive
+numeric suffixes and never overwrite existing files.
 
 New runs keep durable, versioned SQLite episode/optimization journals outside
 weights. Existing v1.4 checkpoints remain read-only and resumable: bounded raw

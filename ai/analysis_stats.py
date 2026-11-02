@@ -31,6 +31,7 @@ class Dataset:
     checkpoint: str | None = None
     limitations: tuple[str,...] = ()
     configuration: dict | None = None
+    checkpoint_episode: int | None = None
 
     @property
     def parameter_count(self):

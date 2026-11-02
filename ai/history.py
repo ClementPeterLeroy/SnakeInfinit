@@ -152,4 +152,4 @@ def legacy_dataset(folder):
         limitations=(f'v1.4 checkpoint: available episodes {first}..{completed}; no fabricated earlier history.',
             'Per-episode reasons, cumulative steps, epsilon and times were not recorded; only final values are available.',
             'Legacy raw histories share a tensor file with replay/optimizer data; read-only weights_only parsing is required.'),
-        configuration=metadata['hyperparameters'])
+        configuration=metadata['hyperparameters'],checkpoint_episode=completed)

@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 from ai.analysis_stats import Dataset,EpisodeRecord
 from ai.history import HistoryStore
-from ai.analysis_export import export_csv
+from ai.analysis_export import export_csv,export_filename,export_named_csv
 from ai.experiments import Experiment,ExperimentStore
 
 
@@ -63,3 +63,34 @@ def test_experiment_architecture_is_generic_and_metadata_versioned(tmp_path):
     with pytest.raises(FileExistsError):store.save(experiment)
     with pytest.raises(ValueError):
         Experiment('bad','Bad','encoder',13,(11,8,3),{}, {},0,(),100)
+
+
+def test_readable_windows_export_names_comparison_checkpoint_and_collisions(tmp_path):
+    a=Dataset('a','Baseline DQN',(EpisodeRecord('a',1,4),),checkpoint_episode=10000)
+    b=Dataset('b','Other: Model?*',(EpisodeRecord('b',1,3),),checkpoint_episode=5000)
+    assert export_filename((a,))=='snakeinfinite_baseline-dqn_10000ep_raw.csv'
+    assert export_filename((a,),'grouped',100)=='snakeinfinite_baseline-dqn_10000ep_grouped-100.csv'
+    comparison=export_filename((a,b))
+    assert 'baseline-dqn_10000ep_vs_other-model_5000ep' in comparison
+    assert not any(char in comparison for char in '<>:"/\\|?*')
+    first=export_named_csv(tmp_path,(a,))
+    original=first.read_bytes()
+    second=export_named_csv(tmp_path,(a,))
+    assert first!=second and second.stem.endswith('-2') and first.read_bytes()==original
+    assert first.with_suffix('.csv.metadata.json').is_file()
+
+
+def test_filename_uses_selected_checkpoint_not_last_visible_or_evaluated_episode():
+    dataset=Dataset('e','模型 Ω',(EpisodeRecord('e',1,0,seed=1),),kind='evaluation',
+        checkpoint='episode-0010000-aabbccdd',checkpoint_episode=10000)
+    name=export_filename((dataset,),'grouped',25)
+    assert '10000ep-aabbccdd-eval' in name and 'grouped-25' in name
+    assert '1ep_' not in name and not name.endswith(' .csv')
+
+
+def test_named_export_reports_blocked_parent_without_retrying_forever(tmp_path):
+    blocked=tmp_path/'exports'
+    blocked.write_text('existing file')
+    dataset=Dataset('a','Baseline',(),checkpoint_episode=10)
+    with pytest.raises(FileExistsError):export_named_csv(blocked,(dataset,))
+    assert blocked.read_text()=='existing file'

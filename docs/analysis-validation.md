@@ -24,9 +24,13 @@ Modified runtime/configuration files: `ai/worker.py` (journal/experiment instrum
 
 New regression files: `tests/test_analysis_statistics.py`,
 `tests/test_analysis_history_export.py`, `tests/test_analysis_evaluation.py`,
-`tests/test_analysis_ui.py`. The existing release-identity assertion in
+`tests/test_analysis_ui.py`, `tests/test_analysis_selection.py` and
+`tests/test_model_export.py`. The visible `models/` library and
+`tools/export_models.py` provide portable, copy-only model snapshots for sharing.
+The existing release-identity assertion in
 `tests/test_challenge_rework.py` now expects v1.5.0. Documentation changes are
-`README.md`, `docs/releases/v1.5.0.md` and this report.
+`README.md`, `CHANGELOG.md`, `models/README.md`, `docs/releases/v1.5.0.md` and this report.
+Application and Windows version metadata consistently identify v1.5.0.
 
 ## Compatibility and safeguards
 
@@ -66,20 +70,24 @@ check, so their continued execution cannot be confirmed. The completed saved run
 
 ## Automated results
 
-The complete CPU/Torch/Pygame suite passed **345 tests** in **30.00 seconds**,
-preserving the existing 319 tests and adding 26 analysis cases. Coverage includes:
+The complete CPU/Torch/Pygame suite passed **354 tests in 37.11 seconds**, preserving
+the existing 319 cases and adding 35 analysis/model-sharing cases. Coverage includes:
 
 - Exact mean/median, type-7 quartiles, population deviation, IQR, empty/singleton
   data, partial groups, raw rolling statistics and missing fields.
 - Different model architectures/counts, actual step alignment, training/evaluation
   separation, matching evaluation seeds/settings and cache reuse.
 - Raw/grouped/range/comparison CSV, Unicode, missing blanks, write failures and
-  exclusive creation without overwriting.
+  exclusive creation without overwriting; readable model/checkpoint filenames,
+  actual checkpoint identity for evaluations, and repeated-export numeric suffixes.
 - Read-only v1.4 histories without model construction, frozen repeatable evaluations,
   cancellation, unchanged checkpoint hashes, durable journals and resume branches.
 - Continued training after simulated history-write failure, chart control state,
   zoom/pan/reset, grouping, paired-candle hover, large-history rendering, background
   control synchronization and contained chart display failure.
+- Mandatory Model A, selecting/deselecting Model B, independent checkpoint controls,
+  comparisons within one model, checkpoint-bounded journal data, missing files and
+  absent evaluations. Model changes retain valid chart/window/range context.
 - Existing Classic/Arcade/challenges, Lab, Arena, checkpoint resumption, training
   and subprocess startup with Torch completely blocked.
 
@@ -115,10 +123,18 @@ deserialization and first import are more expensive but execute in the backgroun
 
 ## UI, evaluation, exports and experiments
 
-The Analysis screen offers Model A/B selection, three chart modes, episode/step
+The Analysis screen offers mandatory Model A and optional Model B with independent
+selectors of actual saved checkpoints. Deselecting B hides its checkpoint/data
+controls and removes its data immediately. Each DATA control explicitly selects
+training history through that checkpoint or its existing frozen evaluation files;
+missing data is explained, never fabricated. Both slots may compare checkpoints
+of the same model.
+
+It retains three chart modes, episode/step
 alignment, remembered ranges, zoom/pan/reset, exact hover, mean/median toggles,
 side-by-side raw statistics, asynchronous CSV and frozen evaluations. An offscreen
-1280×720 render was inspected for alignment and overlap. Live desktop interaction,
+1280×720 render, including checkpoint/data selectors and export labels, was inspected
+for alignment and overlap. Live desktop interaction,
 audio and subjective smoothness have not been manually verified.
 
 Calculations use type-7 linear quartiles, true min/max whiskers and population
@@ -130,6 +146,10 @@ Frozen evaluation reuses Arena with private, non-trainable weights, epsilon zero
 shared seed lists and shared explicit reward/termination settings. New JSON results
 are separate from exploratory training records. Raw/grouped CSV uses unique
 exclusive filenames and metadata sidecars; selected range is the default.
+**EXPORT RAW** / **EXPORT GROUPED** filenames identify model names, selected
+checkpoint episodes/short identities and export type/grouping. Comparisons include
+both identities; Windows-invalid characters are removed and duplicates use numeric
+suffixes. Existing CSV columns and statistical conventions are retained.
 
 Experiment descriptions retain encoder, dimension, architecture, configuration,
 seeds, declared step budget, runs/checkpoints and evaluation associations. New

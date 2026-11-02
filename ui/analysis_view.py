@@ -1,6 +1,5 @@
 """First-class, background-driven training/evaluation analysis workspace."""
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 import json
 from pathlib import Path
 import threading
@@ -9,7 +8,7 @@ from uuid import uuid4
 import pygame
 from ai.analysis_repository import AnalysisRepository
 from ai.analysis_model import AnalysisModel
-from ai.analysis_export import export_csv
+from ai.analysis_export import export_named_csv
 from ai.evaluation import evaluate_checkpoints
 from ai.experiments import Experiment,ExperimentStore,BASELINE_ENCODER
 from ui.ai_components import FormView
@@ -60,30 +59,72 @@ class AnalysisView(FormView):
 
     def catalog_ready(self,catalog):
         old_ids=[self.catalog[i].identifier if i is not None and i<len(self.catalog) else None for i in self.indices]
+        old_models=[self.catalog[i].model_key if i is not None and i<len(self.catalog) else None for i in self.indices]
         self.catalog=catalog
         for slot,identifier in enumerate(old_ids):
             if identifier:
                 self.indices[slot]=next((i for i,c in enumerate(catalog) if c.identifier==identifier),None)
-        if self.indices[0] is None and catalog:self.indices[0]=0
+                if self.indices[slot] is None and old_models[slot] in self.model_keys():
+                    self.indices[slot]=self.default_choice(old_models[slot])
+        if catalog and (not old_ids[0] or self.indices[0] is None):
+            self.indices[0]=self.default_choice(self.model_keys()[0])
+        for slot in (0,1):
+            selected=self.selected(slot)
+            if selected and selected.kind=='journal' and self.checkpoints(selected.model_key):
+                self.indices[slot]=self.default_choice(selected.model_key)
         if catalog:self.load_selected()
-        else:self.status='No historical runs yet. Complete an episode in Training Center or load an existing profile.'
+        else:
+            self.indices=[None,None]
+            self.load_selected()
+            self.status='No historical runs yet. Complete an episode in Training Center or load an existing profile.'
         self.layout()
+
+    def model_keys(self):
+        return tuple(dict.fromkeys(choice.model_key for choice in self.catalog))
+
+    def checkpoints(self,key):
+        return tuple(i for i,c in enumerate(self.catalog) if c.model_key==key and c.kind=='checkpoint')
+
+    def default_choice(self,key):
+        checkpoints=self.checkpoints(key)
+        if checkpoints:return checkpoints[0]  # Catalog lists actual checkpoints newest first.
+        return next(i for i,c in enumerate(self.catalog) if c.model_key==key)
+
+    def selected(self,slot):
+        index=self.indices[slot]
+        return self.catalog[index] if index is not None and index<len(self.catalog) else None
+
+    def data_choices(self,selected):
+        """Training/evaluation sources for one actual checkpoint, never fabricated."""
+        return tuple(i for i,c in enumerate(self.catalog) if c.model_key==selected.model_key
+            and c.kind in ('checkpoint','evaluation') and c.checkpoint==selected.checkpoint)
 
     def load_selected(self):
         choices=tuple(self.catalog[i] for i in self.indices if i is not None and i<len(self.catalog))
         self.generation+=1
         self.stats_generation+=1
         self.bundle=None
+        self.datasets=[None,None]
+        if self.indices[0] is None or not choices:
+            self.status='Model A is required; no model data is available'
+            return
         self.status='Loading exact raw records in background'
         generation=self.generation
         def load():return tuple(self.repository.load(c) for c in choices)
         def ready(data):
             if generation!=self.generation:return
             self.datasets=list(data)+[None]*(2-len(data))
-            if not self.ranges:
-                records=[r for d in data for r in d.records]
-                if records:
-                    self.text['start'],self.text['end']=str(min(r.episode for r in records)),str(max(r.episode for r in records))
+            records=[r for d in data for r in d.records]
+            if self.alignment=='steps' and any(r.cumulative_steps is None for r in records):
+                self.alignment='episode'
+                if 'episode' in self.ranges:
+                    self.text['start'],self.text['end']=map(str,self.ranges['episode'])
+            if records:
+                values=[r.episode if self.alignment=='episode' else r.cumulative_steps for r in records]
+                low,high=min(values),max(values)
+                start,end=int(self.text['start']),int(self.text['end'])
+                if not self.ranges or end<low or start>high:
+                    self.text['start'],self.text['end']=str(low),str(high)
             self.ranges[self.alignment]=(int(self.text['start']),int(self.text['end']))
             self.prepare()
         self.submit('load',load,callback=ready)
@@ -107,9 +148,26 @@ class AnalysisView(FormView):
     def layout(self):
         self.buttons,self.fields=[],{}
         for slot,x in enumerate((24,640)):
-            selected=self.catalog[self.indices[slot]] if self.indices[slot] is not None and self.indices[slot]<len(self.catalog) else None
-            title=f"MODEL {'AB'[slot]}: "+(selected.name if selected else 'OPTIONAL / NONE' if slot else 'No selection')
-            self.button(title[:72],x,113,600,'model_a' if slot==0 else 'model_b')
+            selected=self.selected(slot)
+            letter='AB'[slot]
+            title=f'MODEL {letter}: '+((selected.model_name or selected.name)[:24]+f' [{selected.model_key[:6]}]' if selected
+                else 'None — single model' if slot else 'No models available')
+            self.button(title,x,113,300,'model_a' if slot==0 else 'model_b')
+            if selected:
+                available=self.checkpoints(selected.model_key)
+                checkpoint=next((self.catalog[i] for i in available if self.catalog[i].checkpoint==selected.checkpoint),None)
+                if checkpoint:
+                    title=f'CHECKPOINT {letter}: {checkpoint.episode} ep / {checkpoint.source.name[-8:]}'
+                    self.button(title,x+310,113,290,'checkpoint_a' if slot==0 else 'checkpoint_b')
+                if selected.kind=='evaluation':
+                    title=f'DATA {letter}: FROZEN EVALUATION / {selected.name.split(" / EVAL ")[-1]} games / {selected.source.stem[:8]}'
+                elif selected.kind=='checkpoint':
+                    evaluations=sum(self.catalog[i].kind=='evaluation' for i in self.data_choices(selected))
+                    title=f'DATA {letter}: TRAINING THROUGH CHECKPOINT / frozen evaluations: {evaluations}'
+                else:title=f'DATA {letter}: RECORDED JOURNAL / no saved checkpoint selected'
+                self.button(title,x,188,600,'data_a' if slot==0 else 'data_b')
+                self.buttons[-1].rect.height=28
+                self.buttons[-1].text_size=12
         for x,width,title,action in ((24,174,'DISTRIBUTION','distribution'),(207,174,'MEAN / MEDIAN','mean_median'),
             (390,132,'RAW SCORES','raw'),(532,130,f'WINDOW {self.group}','group'),
             (672,170,'BY '+('EPISODE' if self.alignment=='episode' else 'ENV STEPS'),'alignment'),
@@ -122,8 +180,8 @@ class AnalysisView(FormView):
         for x,title,action in ((419,'ZOOM +','zoom_in'),(512,'ZOOM -','zoom_out'),(605,'<','left'),(664,'>','right'),(723,'RESET ZOOM','reset')):
             self.button(title,x,599,105 if action=='reset' else 83 if action.startswith('zoom') else 49,action)
         self.field('step_bin',835,600,76)
-        self.button('EXPORT CSV: RAW',24,650,183,'export_raw')
-        self.button('CSV: GROUPED',217,650,169,'export_grouped')
+        self.button('EXPORT RAW',24,650,183,'export_raw')
+        self.button('EXPORT GROUPED',217,650,169,'export_grouped')
         self.button('FULL' if self.full_export else 'RANGE',396,650,87,'full')
         self.button('EVALUATE FROZEN',493,650,190,'evaluate')
         self.field('games',735,652,76)
@@ -146,9 +204,32 @@ class AnalysisView(FormView):
             if action in ('model_a','model_b'):
                 if not self.catalog:return
                 slot=int(action=='model_b')
-                index=self.indices[slot]
-                self.indices[slot]=(index+1 if index is not None else 0)%len(self.catalog)
-                if slot==1 and index==len(self.catalog)-1:self.indices[slot]=None
+                selected=self.selected(slot)
+                keys=self.model_keys()
+                index=keys.index(selected.model_key)+1 if selected else 0
+                self.indices[slot]=None if slot==1 and index==len(keys) else self.default_choice(keys[index%len(keys)])
+                self.load_selected()
+            elif action in ('checkpoint_a','checkpoint_b'):
+                slot=int(action=='checkpoint_b')
+                selected=self.selected(slot)
+                if selected is None:return
+                options=self.checkpoints(selected.model_key)
+                if not options:
+                    self.status='No saved checkpoints exist for this model'
+                    return
+                current=next((j for j,i in enumerate(options) if self.catalog[i].checkpoint==selected.checkpoint),-1)
+                self.indices[slot]=options[(current+1)%len(options)]
+                self.load_selected()
+            elif action in ('data_a','data_b'):
+                slot=int(action=='data_b')
+                selected=self.selected(slot)
+                if selected is None:return
+                options=self.data_choices(selected)
+                if len(options)<2:
+                    self.status='No frozen evaluation exists for this checkpoint. Use Evaluate Frozen to collect real results.'
+                    return
+                current=options.index(self.indices[slot]) if self.indices[slot] in options else -1
+                self.indices[slot]=options[(current+1)%len(options)]
                 self.load_selected()
             elif action=='refresh':self.refresh()
             elif action in ('distribution','mean_median','raw'):
@@ -192,10 +273,9 @@ class AnalysisView(FormView):
                 datasets=tuple(d for d in self.datasets if d)
                 if not datasets:raise ValueError('Select data before exporting')
                 kind='raw' if action=='export_raw' else 'grouped'
-                path=self.profile/'exports'/(datetime.now().strftime('%Y%m%d-%H%M%S')+'-'+uuid4().hex[:8]+'-'+kind+'.csv')
                 start,end=(None,None) if self.full_export else (int(self.text['start']),int(self.text['end']))
                 size=self.group if self.alignment=='episode' else int(self.text['step_bin'])
-                self.submit('export',export_csv,path,datasets,kind,start,end,size,self.alignment,
+                self.submit('export',export_named_csv,self.profile/'exports',datasets,kind,start,end,size,self.alignment,
                             callback=lambda p:setattr(self,'status','Exported '+str(p)))
                 self.status='Exporting in background; existing files are never overwritten'
             elif action=='preset':
@@ -276,27 +356,32 @@ class AnalysisView(FormView):
         self.pool.shutdown(wait=True,cancel_futures=True)
 
     def draw(self,surface,mouse):
+        for slot,x in enumerate((24,640)):
+            selected=self.selected(slot)
+            if selected and not any(self.catalog[i].checkpoint==selected.checkpoint for i in self.checkpoints(selected.model_key)):
+                label(surface,f'CHECKPOINT {"AB"[slot]}: unavailable',(x+455,131),13,MUTED)
         for index,dataset in enumerate(self.datasets):
             if not dataset:continue
             x=24+index*616
             records=dataset.records
             steps=self.bundle['models'][index]['recorded_steps'] if self.bundle and index<len(self.bundle['models']) else None
             old_clip=surface.get_clip()
-            surface.set_clip(pygame.Rect(x,150,600,64))
-            label(surface,f"{'AB'[index]} / {dataset.kind.upper()} / {dataset.architecture} / {dataset.parameter_count:,} params",(x,154),13,MODEL_COLORS[index],False)
+            surface.set_clip(pygame.Rect(x,150,600,36))
+            label(surface,f"{'AB'[index]} / {dataset.kind.upper()} / {dataset.architecture} / {dataset.parameter_count:,} params",(x,153),13,MODEL_COLORS[index],False)
             completed=records[-1].episode if records else 0
-            label(surface,f"Inputs {dataset.architecture[0]} / ep {completed:,} / n {len(records):,} / steps {steps if steps is not None else 'N/A'} / {dataset.status}"[:92],(x,175),13,TEXT,False)
-            label(surface,(dataset.checkpoint or 'Durable raw episode journal')[-95:],(x,196),11,MUTED,False)
+            label(surface,f"Inputs {dataset.architecture[0]} / ep {completed:,} / n {len(records):,} / steps {steps if steps is not None else 'N/A'} / {dataset.status}"[:92],(x,169),13,TEXT,False)
             surface.set_clip(old_clip)
         self.chart.draw(surface,pygame.Rect(24,266,886,300),self.bundle,mouse,self.show_mean,self.show_median)
-        label(surface,'A emerald / B blue; mean solid, median dashed; box dot = mean. Dense views show exact sampled extrema/candles.',(24,573),11,MUTED,False)
+        models='A emerald / B blue' if self.bundle and len(self.bundle['models'])>1 else 'A emerald'
+        label(surface,models+'; mean solid, median dashed; box dot = mean. Dense views show exact sampled extrema/candles.',(24,573),11,MUTED,False)
         if self.bundle:
             pygame.draw.rect(surface,PANEL,(934,266,322,370),border_radius=6)
             label(surface,'STATISTICS / FULL RAW RANGE',(947,274),14,GREEN,False)
             keys=(('N','count'),('Mean','mean'),('Median','median'),('Min','minimum'),('Q1','q1'),('Q3','q3'),('Max','maximum'),
                 ('IQR','iqr'),('SD (population)','stddev'),('Apples','total_apples'),('Mean length','mean_length'),('Median length','median_length'),
                 ('Collision %','collision_percent'),('Stagnation %','stagnation_percent'),('Mean reward','mean_reward'),('Best episode','best_episode'),('Recorded steps','environment_steps'),('Duration (s)','duration'))
-            label(surface,'A',(1114,303),12,MODEL_COLORS[0]);label(surface,'B',(1204,303),12,MODEL_COLORS[1])
+            label(surface,'A',(1114,303),12,MODEL_COLORS[0])
+            if len(self.bundle['models'])>1:label(surface,'B',(1204,303),12,MODEL_COLORS[1])
             for row,(title,key) in enumerate(keys):
                 label(surface,title,(946,322+row*16),12,MUTED,False)
                 for index,model in enumerate(self.bundle['models']):

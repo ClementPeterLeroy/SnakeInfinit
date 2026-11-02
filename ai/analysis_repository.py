@@ -1,5 +1,5 @@
 """Metadata-first discovery; journals and evaluations never load neural weights."""
-from dataclasses import asdict,dataclass
+from dataclasses import asdict,dataclass,replace
 import json
 from pathlib import Path
 import sqlite3
@@ -15,6 +15,13 @@ class Choice:
     source: Path
     run: str
     checkpoint: Path | None = None
+    model_id: str = ''
+    model_name: str = ''
+    episode: int | None = None
+
+    @property
+    def model_key(self):
+        return self.model_id or self.run
 
 
 class AnalysisRepository:
@@ -51,15 +58,20 @@ class AnalysisRepository:
                     try:
                         if path.stat().st_size>200000:continue
                         metadata=json.loads(path.read_text(encoding='utf-8'))
+                        if metadata.get('format_version')!=1 or metadata.get('kind')!='resumable-boundary':continue
+                        if type(metadata['episode']) is not int or metadata['episode']<0:continue
+                        if metadata['model_identifier']!=run.name:continue
                         checkpoints.append((metadata['episode'],Choice(str(folder.resolve()),
-                            f"{metadata['model_name']} / ep {metadata['episode']}",'checkpoint',folder,run.name,folder)))
+                            f"{metadata['model_name']} / ep {metadata['episode']}",'checkpoint',folder.resolve(),run.name,folder.resolve(),
+                            run.name,metadata['model_name'],metadata['episode'])))
                     except (ValueError,OSError,KeyError,TypeError):continue
         for metadata in self.history.datasets():
             configuration=metadata['configuration']
             checkpoint_run=configuration.get('checkpoint_run_id',metadata['identifier'])
             matching=[(ep,c) for ep,c in checkpoints if c.run==checkpoint_run]
-            checkpoint=max(matching,key=lambda x:x[0])[1].source if matching else None
-            result.append(Choice(metadata['identifier'],metadata['name']+' / journal','journal',self.history.path,metadata['identifier'],checkpoint))
+            checkpoint=max(matching,key=lambda x:x[0])[1].checkpoint if matching else None
+            result.append(Choice(metadata['identifier'],metadata['name']+' / journal','journal',self.history.path,metadata['identifier'],
+                checkpoint,checkpoint_run,metadata['name']))
         result.extend(choice for _,choice in sorted(checkpoints,key=lambda x:x[0],reverse=True))
         evaluations=self.profile/'evaluations'
         if evaluations.is_dir():
@@ -68,8 +80,9 @@ class AnalysisRepository:
                     if path.stat().st_size>50000000:continue
                     data=json.loads(path.read_text(encoding='utf-8'))
                     for index,model in enumerate(data['models']):
+                        checkpoint=Path(model['checkpoint']).resolve()
                         result.append(Choice(str(path.resolve())+f':{index}',model['name']+' / EVAL '+str(len(data['seeds'])),
-                            'evaluation',path,str(index),Path(model['checkpoint'])))
+                            'evaluation',path,str(index),checkpoint,model['run_id'],model['name'],model['training_episode']))
                 except (OSError,ValueError,KeyError,TypeError):continue
         return tuple(result)
 
@@ -84,8 +97,24 @@ class AnalysisRepository:
                 checkpoint=str(choice.checkpoint) if choice.checkpoint else None,configuration=dataset.configuration,limitations=limits)
         if choice.kind=='checkpoint':
             dataset=legacy_dataset(choice.source)
-            # A new journal is loaded separately; checkpoint snapshots retain their available boundary window.
-            return dataset
+            # Bound every history to this immutable snapshot. Enrich only with
+            # actual journal records whose counters and overlapping values agree.
+            for metadata in self.history.datasets():
+                if metadata['configuration'].get('checkpoint_run_id',metadata['identifier'])!=choice.model_key:continue
+                journal=self.history.load(metadata['identifier'])
+                records=tuple(r for r in journal.records if r.episode<=choice.episode)
+                if not records or not dataset.records or journal.architecture!=dataset.architecture:continue
+                if records[-1].episode!=choice.episode or records[-1].cumulative_steps!=dataset.records[-1].cumulative_steps:continue
+                by_episode={r.episode:r for r in records}
+                overlaps=[r for r in dataset.records if r.episode in by_episode]
+                if not overlaps or any((r.score,r.length,r.reward)!=(by_episode[r.episode].score,
+                    by_episode[r.episode].length,by_episode[r.episode].reward) for r in overlaps):continue
+                complete=len(records)==choice.episode and records[0].episode==1
+                actual=records if complete else tuple(by_episode.get(r.episode,r) for r in dataset.records)
+                configuration={**(journal.configuration or {}),'training':dataset.configuration}
+                return replace(dataset,records=actual,status='Training history through checkpoint',configuration=configuration,
+                    limitations=(f'Actual recorded training history through checkpoint episode {choice.episode}; not a frozen-policy evaluation.',))
+            return replace(dataset,status='Training history through checkpoint')
         if choice.kind=='evaluation':
             data=json.loads(choice.source.read_text(encoding='utf-8'))
             model=data['models'][int(choice.run)]
@@ -93,5 +122,6 @@ class AnalysisRepository:
             return Dataset(choice.identifier,model['name'],records,kind='evaluation',architecture=tuple(model['architecture']),
                 status='Frozen greedy evaluation',checkpoint=model['checkpoint'],
                 configuration={'evaluation':data['configuration'],'evaluation_seeds':data['seeds']},
+                checkpoint_episode=model['training_episode'],
                 limitations=('Evaluation seeds/settings are recorded; these records are not exploratory training episodes.',))
         raise ValueError('Unknown analysis dataset')
