@@ -1,0 +1,38 @@
+{
+  "format_version": 1,
+  "application_version": "v1.4.0",
+  "created_utc": "2026-11-01T17:42:23.298130+00:00",
+  "architecture": {
+    "hidden_sizes": [
+      16,
+      8
+    ],
+    "activation": "relu",
+    "seed": 0,
+    "input_size": 11,
+    "output_size": 3
+  },
+  "features": [
+    "Danger straight",
+    "Danger right",
+    "Danger left",
+    "Moving up",
+    "Moving down",
+    "Moving left",
+    "Moving right",
+    "Food above",
+    "Food below",
+    "Food left",
+    "Food right"
+  ],
+  "actions": [
+    "Straight",
+    "Turn left",
+    "Turn right"
+  ],
+  "weights_file": "weights-531a2e8f892743beb378ff9f9f9f5d9d.pt",
+  "sha256": "bed5c9766f26cc68256011af24d6d627b6bb6c3a228c1b7e1e98d2388f14977d",
+  "manual_edits": [],
+  "supervised_demo_steps": 0,
+  "reinforcement_learning": true
+}

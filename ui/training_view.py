@@ -11,6 +11,7 @@ from ai.persistence import ModelStore
 from ai.worker import TrainingWorker
 from ui.ai_components import FormView, chart, draw_board
 from ui.components import BG,TEXT,GREEN,MUTED,label
+from ui.analysis_view import AnalysisView
 
 
 class TrainingView(FormView):
@@ -37,6 +38,8 @@ class TrainingView(FormView):
         self.text.update(hidden='16,8',activation='relu',name='Snake DQN Alpha')
         self.status='Configure a new run or select a trusted local checkpoint to resume'
         self.error=None
+        self.analysis=AnalysisView(root)
+        self.rolling_median=()
         self.layout()
 
     def entries(self):
@@ -50,12 +53,16 @@ class TrainingView(FormView):
         self.buttons,self.fields=[],{}
         self.button('CONFIGURATION',24,67,215,'config',self.page=='config')
         self.button('DASHBOARD',251,67,215,'dashboard',self.page=='dashboard')
+        self.button('ANALYSIS',478,67,215,'analysis',self.page=='analysis')
         self.button('BACK TO AI',1090,67,166,'back')
         if self.confirm:
             self.button('CONFIRM NEW RUN',430,370,205,'confirm',True)
             self.button('CANCEL',650,370,160,'cancel')
             return
-        if self.page=='config':
+        if self.page=='analysis':
+            self.analysis.layout()
+            self.buttons.extend(self.analysis.buttons)
+        elif self.page=='config':
             self.button(f'SOURCE: {self.source}',24,120,570,'source')
             self.button('NEXT SETTINGS PAGE',930,120,326,'page')
             keys=list(TrainingConfig().to_dict())+['hidden','activation','name']
@@ -97,6 +104,10 @@ class TrainingView(FormView):
 
     def action(self,action):
         self.error=None
+        if action.startswith('analysis:'):
+            self.analysis.action(action.split(':',1)[1])
+            self.layout()
+            return
         try:
             if action=='cancel':
                 self.confirm=None
@@ -104,8 +115,9 @@ class TrainingView(FormView):
                 resume=self.confirm[1]
                 self.confirm=None
                 self.start(resume)
-            elif action in ('config','dashboard'):
+            elif action in ('config','dashboard','analysis'):
                 self.page=action
+                if action=='analysis':self.analysis.refresh()
             elif action=='page':
                 self.config_page=1-self.config_page
             elif action=='source':
@@ -144,6 +156,10 @@ class TrainingView(FormView):
         self.layout()
 
     def update(self,dt):
+        self.analysis.update(dt,self.page=='analysis')
+        if self.page=='analysis' and not self.confirm:
+            # Background catalog/statistics callbacks can replace Analysis controls.
+            self.buttons=[button for button in self.buttons if not button.action.startswith(self.analysis.prefix)]+self.analysis.buttons
         if self.worker:
             snapshot=self.worker.latest()
             if snapshot is not None:
@@ -157,6 +173,8 @@ class TrainingView(FormView):
                             running-=scores[i-100]
                         rolling.append(running/min(i+1,100))
                     self.rolling=tuple(rolling)
+                    from statistics import median
+                    self.rolling_median=tuple(median(scores[max(0,i-99):i+1]) for i in range(max(0,len(scores)-100),len(scores)))
                 self.snapshot=snapshot
                 self.status=snapshot.message
 
@@ -164,14 +182,33 @@ class TrainingView(FormView):
         return self.snapshot.checkpoint if self.snapshot else None
 
     def close(self):
+        self.analysis.close()
         if self.worker:
             self.worker.shutdown()
+
+    def handle_event(self,event,mouse):
+        if self.page=='analysis':
+            return self.analysis.handle_event(event,mouse)
+        return super().handle_event(event,mouse)
 
     def draw(self,surface):
         surface.fill(BG)
         label(surface,'TRAINING CENTER',(24,15),27,GREEN,False)
         label(surface,'Train & monitor',(330,23),17,MUTED,False)
-        if self.page=='config':
+        if self.page=='analysis':
+            # Mouse coordinates use the same logical viewport as all other controls.
+            window=pygame.display.get_surface()
+            width,height=window.get_size()
+            scale=min(width/1280,height/720)
+            position=pygame.mouse.get_pos()
+            mouse=((position[0]-(width-1280*scale)/2)/scale,(position[1]-(height-720*scale)/2)/scale)
+            try:
+                self.analysis.draw(surface,mouse)
+            except Exception as error:
+                self.analysis.status='Analysis display error: '+str(error)
+                label(surface,self.analysis.status[:120],(640,340),16,MUTED)
+            return
+        elif self.page=='config':
             keys=list(TrainingConfig().to_dict())+['hidden','activation','name']
             for position,key in enumerate(keys[self.config_page*12:(self.config_page+1)*12]):
                 column,row=position//6,position%6
@@ -217,7 +254,13 @@ class TrainingView(FormView):
             chart(surface,pygame.Rect(770,120,486,230),'Episode scores',scores)
             chart(surface,pygame.Rect(770,370,486,230),'Rolling average (100)',self.rolling)
             chart(surface,pygame.Rect(24,490,350,130),'Huber TD loss',histories.get('losses',()))
-            chart(surface,pygame.Rect(394,390,350,230),'Exploration epsilon',histories.get('epsilons',()))
+            pygame.draw.rect(surface,(26,32,31),(394,390,350,230),border_radius=6)
+            label(surface,f"EXPLORATION ε: {m['epsilon']:.5f}",(410,405),18,GREEN,False)
+            recent=scores[-100:]
+            label(surface,f'Recent episodes: {len(recent)} / best {m["best"]}',(410,447),17,TEXT,False)
+            label(surface,f'Rolling mean: {self.rolling[-1]:.3f}' if self.rolling else 'Rolling mean: --',(410,483),17,TEXT,False)
+            label(surface,f'Rolling median: {self.rolling_median[-1]:.3f}' if self.rolling_median else 'Rolling median: --',(410,519),17,TEXT,False)
+            label(surface,'Detailed distributions and exports: Analysis',(410,566),13,MUTED,False)
         else:
             label(surface,'Start training or resume a checkpoint from Configuration',(640,320),22,MUTED)
         self.draw_fields(surface)

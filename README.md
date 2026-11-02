@@ -1,6 +1,6 @@
 # SNAKE INFINITE
 
-**v1.4.0 — First Intelligence**
+**v1.5.0 — Analysis & Experiment Framework**
 
 A minimalist Python/Pygame arcade game with Classic, Arcade, five challenges,
 official startup branding, and local records. Built on the existing v1.0/v1.1
@@ -12,6 +12,48 @@ The AI section integrates **NEURAL LABORATORY — Build & inspect**,
 **TRAINING CENTER — Train & monitor**, and **ARENA — Watch & evaluate**.
 DQN training and frozen greedy evaluation use the existing headless Classic engine.
 PyTorch remains optional for ordinary arcade play.
+
+## Analysis & experiments
+
+**Shared model files live in the visible [`models/`](models/README.md) folder.**
+They are intended to be committed with the project. After further training, run
+`python tools/export_models.py` to copy the latest saved weights/configurations
+there for your next manual GitHub push. Original resumable checkpoints and live
+training data remain in the application-data profile.
+
+Training Center now contains **Configuration | Dashboard | Analysis**. Analysis
+loads saved training journals, legacy checkpoint histories, and frozen evaluation
+results. Select Model A and optionally Model B; selectors cycle the local library.
+
+- **Distribution** (default): true min/max whiskers, Q1–Q3 boxes, median lines and
+  optional mean dots. Choose groups of 25, 50, 100, 250 or 500 episodes.
+- **Mean / Median**: independently toggled raw-score trailing statistics using
+  the same window choices.
+- **Raw Scores**: exact episode histories with extrema-preserving display sampling.
+
+All modes retain selected models, window and range, with zoom, pan, reset, exact
+hover, and side-by-side statistics. Compare by episode or recorded environment
+steps; missing step histories are explained rather than estimated. Quartiles use
+linear/type-7 interpolation; standard deviation is the population convention.
+Training scores include exploration and are not definitive policy rankings.
+
+**Evaluate Frozen** runs 25/100/500 or a custom number of greedy Arena games in
+the background. Both checkpoints use identical seeds and explicit shared episode
+limits/rewards. Click again to cancel. Evaluation results stay separate from
+training data. **Export CSV** writes raw or grouped data for the selected range
+or full history, with UTF-8 names, blank missing values and metadata sidecars.
+
+New runs keep durable, versioned SQLite episode/optimization journals outside
+weights. Existing v1.4 checkpoints remain read-only and resumable: bounded raw
+scores/lengths/rewards can be inspected, but unrecorded episode reasons, step
+counts, epsilon and times cannot be recovered. No automatic migration occurs.
+Experiment metadata records encoders, dimensions, configurations, seeds, budgets,
+runs, checkpoints and evaluations. Only **Experiment A: baseline 11 inputs** is
+executable; future 13/16/19-input experiments remain planned.
+
+See [v1.5.0 release notes](docs/releases/v1.5.0.md) for controls, calculation
+conventions, compatibility limits and manual checks, and
+[validation results](docs/analysis-validation.md) for tests and measurements.
 
 ## Training Center and DQN
 
@@ -76,8 +118,10 @@ No separate demonstration game is substituted for actual training.
 
 The dashboard shows status, episode/completed count, current/best/last-100 average
 score, epsilon, loss, steps, apples, collision/stagnation counts, elapsed time,
-gradient norm and checkpoint state. Four charts use actual score, rolling average,
-loss and epsilon samples. Charts retain min/max values in bounded display bins.
+gradient norm and checkpoint state. Three charts use actual score, rolling average
+and Huber TD-loss samples. A compact epsilon indicator and recent mean/median
+summary replace the large epsilon chart. Epsilon samples remain in training state
+and new analysis journals. Charts retain min/max values in bounded display bins.
 History is bounded to the last 20,000 episode scores/lengths/returns and 2,000
 loss/epsilon samples; counters and cumulative return cover the complete run.
 Average length uses the retained episode window. The reported gradient norm is
@@ -309,7 +353,7 @@ Existing `dist/` executables from v1.2.1 are not updated by source changes. Rebu
 to obtain the new arcade menu/version. The existing spec explicitly excludes
 PyTorch and NumPy: the lightweight executable intentionally shows the dependency
 explanation for the lab. Installing Torch into a separate Python does not add it
-to a frozen executable. Run from source for the functional AI experiences in v1.4. A future
+to a frozen executable. Run from source for the functional AI experiences in v1.5. A future
 separate AI-enabled Windows onedir build would need its own spec, CPU Torch/native
 libraries and licenses, a larger download, and independent clean-machine testing.
 

@@ -8,6 +8,9 @@ import torch
 from ai.training_config import TrainingConfig
 from ai.checkpoints import CheckpointStore
 from ai.dqn import Trainer
+from ai.history import HistoryStore
+from ai.analysis_stats import EpisodeRecord
+from ai.experiments import ExperimentStore
 
 
 @dataclass(frozen=True)
@@ -66,11 +69,29 @@ class TrainingWorker:
         start_steps = start_episodes = 0
         last_publish, deadline = 0.,time.monotonic()
         run = uuid4().hex
+        journal=HistoryStore(self.store.root.parent/'history')
+        experiments=ExperimentStore(self.store.root.parent/'experiments')
+        history_warning=None
+        history_failed=False
+        experiment_id=None
+        history_run=None
+        def history_call(operation,*args):
+            nonlocal history_warning,history_failed
+            is_journal=getattr(operation,'__self__',None) is journal
+            if is_journal and history_failed and operation.__name__!='close':
+                return None
+            try:
+                return operation(*args)
+            except Exception as error:
+                history_warning=str(error)
+                if is_journal:history_failed=True
+                return None
         def publish():
             nonlocal last_publish
             metrics = trainer.metrics() if trainer else {}
             seconds = max(active_time,1e-9)
-            snap = TrainingSnapshot(status,message,tuple(metrics.items()),
+            notice=message+(' | History warning: '+history_warning if history_warning else '')
+            snap = TrainingSnapshot(status,notice,tuple(metrics.items()),
                 tuple((key,tuple(getattr(trainer,key))) for key in ('scores','losses','epsilons')) if trainer else (),
                 trainer.environment.game.get_state() if trainer else None,mode,multiplier,
                 (trainer.total_steps-start_steps)/seconds if trainer else 0.,
@@ -94,6 +115,12 @@ class TrainingWorker:
             else:
                 trainer=Trainer(config or TrainingConfig(),network,architecture)
                 checkpoint=str(self.store.save(run,name,trainer))
+            # A resumed run gets a separate append-only analysis session. Old data is never rewritten.
+            history_run=run+(':session:'+uuid4().hex[:12] if resume else '')
+            experiment_id=history_call(experiments.baseline,name,trainer.online,trainer.config,history_run,checkpoint)
+            configuration=dict(training=trainer.config.to_dict(),checkpoint_run_id=run,experiment_id=experiment_id,
+                               observation_encoder='snake-classic-binary11-v1',resumed_from=str(resume) if resume else None)
+            history_call(journal.register,history_run,name,trainer.online.config.sizes,configuration)
             start_steps,start_episodes=trainer.total_steps,trainer.completed
             message='CPU DQN / actual training environment'
             publish()
@@ -114,8 +141,10 @@ class TrainingWorker:
                     elif command in ('pause','stop'):
                         status='Paused' if command=='pause' else 'Stopped'
                         message='Progress retained; resume continues the same episode'
+                        history_call(journal.status,history_run,status)
                     elif command=='resume' and trainer.completed < trainer.config.episodes:
                         status,message,deadline='Running','CPU DQN / actual training environment',time.monotonic()
+                        history_call(journal.status,history_run,status)
                     elif command=='save':
                         pending=True
                         message='Checkpoint pending: next episode boundary (resume if paused)'
@@ -129,6 +158,7 @@ class TrainingWorker:
                     break
                 if pending and trainer.at_boundary:
                     checkpoint=str(self.store.save(run,name,trainer))
+                    if experiment_id:history_call(experiments.link,experiment_id,'checkpoint',checkpoint)
                     pending=False
                     message='Checkpoint saved at episode boundary'
                     publish()
@@ -136,6 +166,8 @@ class TrainingWorker:
                     if status != 'Completed':
                         checkpoint=str(self.store.save(run,name,trainer))
                         status,message='Completed','Episode target reached; checkpoint saved'
+                        history_call(journal.status,history_run,status)
+                        if experiment_id:history_call(experiments.link,experiment_id,'checkpoint',checkpoint)
                         publish()
                 if status != 'Running':
                     # Event wait is interruptible via the bounded 20 ms poll; no model sharing.
@@ -148,13 +180,24 @@ class TrainingWorker:
                 started=time.perf_counter()
                 transition=trainer.train_step()
                 duration=time.perf_counter()-started
+                history_call(journal.append_optimization,history_run,trainer.total_steps,trainer.loss,trainer.gradient_norm,trainer.epsilon)
+                if transition and transition.done:
+                    env=trainer.environment
+                    history_call(journal.append_episode,EpisodeRecord(history_run,trainer.completed,env.game.score,env.steps,
+                        env.total_reward,transition.reason,trainer.total_steps,trainer.epsilon,trainer.elapsed+duration,
+                        env.game.apples_eaten))
                 deadline=time.monotonic()+max(0.,1/(9*multiplier)-duration)
                 if transition and transition.done and trainer.completed % trainer.config.checkpoint_interval==0:
                     checkpoint=str(self.store.save(run,name,trainer))
+                    if experiment_id:history_call(experiments.link,experiment_id,'checkpoint',checkpoint)
                 if time.monotonic()-last_publish >= .1 or transition and transition.done:
                     publish()
             status,message='Stopped','Worker shut down at a movement/optimization boundary'
+            if history_run and trainer.completed < trainer.config.episodes:history_call(journal.status,history_run,status)
             publish()
         except Exception as error:
             status,message='Failed',str(error)
+            if history_run:history_call(journal.status,history_run,status)
             publish()
+        finally:
+            history_call(journal.close)
