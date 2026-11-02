@@ -9,3 +9,7 @@ settings.json
 .venvsnake/
 build/
 dist/
+experiments/frontier/*/checkpoints/
+experiments/frontier/*/history/
+experiments/frontier/*/.writer.lock
+experiments/frontier/*/recovery.json

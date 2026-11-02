@@ -8,6 +8,7 @@ import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from services.userdata import user_data_dir
+from services.checkpoint_catalog import checkpoint_roots
 
 
 def export_model(source,destination,*,training=None):
@@ -48,10 +49,11 @@ def export_latest(profile,destination):
     """One latest committed checkpoint per run, plus saved laboratory models."""
     profile,destination=Path(profile),Path(destination)
     latest={}
-    for path in sorted((profile/'checkpoints').glob('*/*/training.json')):
+    paths=[path for root in checkpoint_roots(profile/'checkpoints') for path in root.glob('*/*/training.json')]
+    for path in sorted(paths):
         if path.is_symlink() or path.stat().st_size>200000:continue
         data=json.loads(path.read_text(encoding='utf-8'))
-        if data.get('format_version')!=1 or data.get('kind')!='resumable-boundary':continue
+        if data.get('format_version')!=1 or data.get('kind') not in ('resumable-boundary','model-snapshot'):continue
         run=data['model_identifier']
         if not isinstance(run,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,40}',run):
             raise ValueError('Invalid model run identifier')

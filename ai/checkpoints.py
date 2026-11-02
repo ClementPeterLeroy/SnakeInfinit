@@ -15,6 +15,7 @@ from ai.config import NetworkConfig
 from ai.environment import Transition
 from ai.dqn import Trainer
 from services.userdata import user_data_dir
+from services.checkpoint_catalog import checkpoint_roots
 
 REASONS = (None, 'wall_collision','self_collision','stagnation','episode_step_limit','board_completion')
 
@@ -34,6 +35,15 @@ class CheckpointStore:
         self.root = Path(root) if root is not None else user_data_dir() / 'checkpoints'
 
     def entries(self):
+        roots=checkpoint_roots(self.root)
+        if len(roots)>1:
+            result=[]
+            for root in roots:
+                result.extend(CheckpointStore(root)._local_entries())
+            return sorted(result,key=lambda x:(x['run'],x['checkpoint']))
+        return self._local_entries()
+
+    def _local_entries(self):
         if not self.root.exists():
             return []
         result = []
@@ -91,7 +101,9 @@ class CheckpointStore:
 
     def _folder(self, folder):
         folder = Path(folder)
-        run = ModelStore(self.root).path(folder.parent.name)
+        roots=checkpoint_roots(self.root)
+        root=next((root for root in roots if folder.resolve().parent.parent==root.resolve()),self.root)
+        run = ModelStore(root).path(folder.parent.name)
         expected = ModelStore(run).path(folder.name)
         if folder.resolve() != expected.resolve():
             raise ValueError("Checkpoint must belong to the local library")
@@ -111,7 +123,7 @@ class CheckpointStore:
         if path.is_symlink() or path.stat().st_size > 200000:
             raise ValueError("Invalid checkpoint metadata")
         data = json.loads(path.read_text(encoding='utf-8'))
-        if not isinstance(data,dict) or data.get('format_version') != 1 or data.get('kind') != 'resumable-boundary':
+        if not isinstance(data,dict) or data.get('format_version') != 1 or data.get('kind') not in ('resumable-boundary','model-snapshot'):
             raise ValueError("Unsupported checkpoint format")
         config=TrainingConfig.from_dict(data.get('hyperparameters'))
         NetworkConfig.from_dict(data.get('architecture'))
@@ -127,6 +139,8 @@ class CheckpointStore:
     def resume(self, folder):
         try:
             model, metadata = self.load_model(folder)
+            if metadata['kind']!='resumable-boundary':
+                raise ValueError('Model-only snapshot cannot resume training; choose a recovery or final checkpoint')
             folder = self._folder(folder)
             path = folder/'training.pt'
             if path.is_symlink() or path.stat().st_size > 256_000_000:

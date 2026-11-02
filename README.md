@@ -1,6 +1,6 @@
 # SNAKE INFINITE
 
-**v1.5.0 — Analysis & Experiment Framework**
+**v1.5.1 — Frontier Training Foundations**
 
 A minimalist Python/Pygame arcade game with Classic, Arcade, five challenges,
 official startup branding, and local records. Built on the existing v1.0/v1.1
@@ -12,6 +12,52 @@ The AI section integrates **NEURAL LABORATORY — Build & inspect**,
 **TRAINING CENTER — Train & monitor**, and **ARENA — Watch & evaluate**.
 DQN training and frozen greedy evaluation use the existing headless Classic engine.
 PyTorch remains optional for ordinary arcade play.
+
+## Frontier and Legacy Training
+
+Open **AI → Training Center**, then choose **LEGACY TRAINING** for the existing
+Configuration/Dashboard/Analysis tools or **FRONTIER TRAINING** for the headless
+workflow. Frontier reuses the existing 11-input CPU DQN and learning settings;
+there is one environment, no CUDA, no parallel environments and no new encoder.
+
+Frontier defaults to 10,000 episodes, seed 0, headless execution and Dashboard
+refresh every 100 episodes (25/100/500 available). Advanced configuration exposes
+existing DQN settings. Full episode records are collected regardless of refresh
+frequency. Dashboard snapshots include score distributions, raw rolling mean and
+median, loss, measured throughput, ETA, optimizer-update counts, termination
+statistics and process CPU/RAM where measurable. No Snake board is rendered.
+
+**START / PAUSE / RESUME / STOP / SAVE CHECKPOINT** control the worker. Stop offers
+to finish the current episode and save a resumable boundary checkpoint, or retain
+the partial episode only in memory. Save while paused is pending until a boundary
+is reached. Final model and resumable checkpoint are automatic at the actual
+configured target. Use **OPEN EXPERIMENT FILES** to access the output directly.
+
+Source runs save Frontier experiments visibly inside this repository:
+
+```text
+experiments/frontier/<experiment-id>/
+    experiment.json
+    models/snake_dqn_11_ep010000_model.pt
+    models/snake_dqn_11_ep010000_model.json
+    checkpoints/<experiment-id>/<saved-checkpoint>/
+    history/history.sqlite3
+```
+
+Lightweight models at 1,000/3,000/5,000/10,000 episodes and the actual final target
+are suitable for GitHub sharing with their JSON metadata. Rotating recovery
+defaults to every 1,000 episodes with two retained slots. Checkpoints include
+weights, target, Adam, replay, counters and owned RNG streams; resume is exact
+at completed-episode boundaries under the same runtime. Partial episodes are not
+serialized. Existing baseline checkpoints remain unchanged and readable.
+Custom settings profiles use their own Frontier directory; the output is editable.
+
+A matched 100,000-step comparison measured **587.7 steps/s Legacy vs 634.1 steps/s
+Frontier**, about **7.9% higher throughput in one paired run**, with identical
+transitions and final online/target weights. This is not a general speed guarantee.
+See [v1.5.1 release notes](docs/releases/v1.5.1.md) and
+[benchmark/validation report](docs/frontier-validation.md) for configuration,
+timing scope, profiling, tests, storage details and limitations.
 
 ## Analysis & experiments
 

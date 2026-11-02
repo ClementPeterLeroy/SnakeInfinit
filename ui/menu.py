@@ -7,7 +7,7 @@ def buttons(ai=False):
     if ai:
         controls=[]
         for index,(title,subtitle,action) in enumerate((('NEURAL LABORATORY','Build & inspect','open_neural'),
-                ('TRAINING CENTER','Train & monitor','open_training'),('ARENA','Watch & evaluate','open_arena'))):
+                ('TRAINING CENTER','Train & monitor','open_training_hub'),('ARENA','Watch & evaluate','open_arena'))):
             control=button(title,440,250+index*88,400,action,index==0)
             control.rect.height=68
             control.subtitle=subtitle

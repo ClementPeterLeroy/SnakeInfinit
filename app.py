@@ -3,6 +3,7 @@ import argparse
 import logging
 import queue
 import threading
+import sys
 from pathlib import Path
 import pygame
 from core.game import Game
@@ -78,6 +79,7 @@ class Application:
         self.lab_error = ""
         self.ai_destination='neural'
         self.training_view=None
+        self.frontier_view=None
         self.arena_view=None
         self.rebuild_controls()
 
@@ -86,8 +88,12 @@ class Application:
             self.controls = menu.buttons(self.screen == "ai")
         elif self.screen == "neural":
             self.controls = self.lab_view.buttons
-        elif self.screen in ('training','arena'):
-            view=self.training_view if self.screen=='training' else self.arena_view
+        elif self.screen=='training_hub':
+            from ui.components import button
+            self.controls=[button('LEGACY TRAINING',350,280,580,'open_training',True),
+                button('FRONTIER TRAINING',350,355,580,'open_frontier'),button('BACK TO AI',500,460,280,'ai')]
+        elif self.screen in ('training','arena','frontier'):
+            view=self.frontier_view if self.screen=='frontier' else self.training_view if self.screen=='training' else self.arena_view
             self.controls=view.buttons
         elif self.screen in ("neural_loading", "neural_unavailable"):
             from ui.components import button
@@ -122,7 +128,22 @@ class Application:
             self.game.snake.pending = None
         if action in ("pause", "over"):
             self.feedback.enter_overlay()
-        if action.startswith('train:'):
+        if action=='open_training_hub':
+            self.screen='training_hub'
+        elif action.startswith('frontier:'):
+            command=action.split(':',1)[1]
+            if command=='back':
+                if self.frontier_view.worker:self.frontier_view.worker.command('pause')
+                self.screen='training_hub'
+            elif command=='arena':
+                path=self.frontier_view.checkpoint_path()
+                try:
+                    if not path:raise ValueError('Save a model or checkpoint first')
+                    self.open_experience('arena');self.arena_view.load(path)
+                except (ValueError,OSError,RuntimeError) as error:
+                    self.screen='frontier';self.frontier_view.status=str(error)
+            else:self.frontier_view.action(command)
+        elif action.startswith('train:'):
             command=action.split(':',1)[1]
             if command=='back':
                 if self.training_view.worker:
@@ -152,8 +173,8 @@ class Application:
                 self.screen='ai'
             else:
                 self.arena_view.action(command)
-        elif action in ('open_training','training','open_arena'):
-            self.open_experience('arena' if action=='open_arena' else 'training')
+        elif action in ('open_training','training','open_arena','open_frontier'):
+            self.open_experience('arena' if action=='open_arena' else 'frontier' if action=='open_frontier' else 'training')
         elif action.startswith("lab:"):
             command = action.split(":", 1)[1]
             if command == "back":
@@ -229,6 +250,12 @@ class Application:
         if destination=='training' and self.training_view is None:
             from ui.training_view import TrainingView
             self.training_view=TrainingView(root,lambda:self.lab_view.lab)
+        elif destination=='frontier' and self.frontier_view is None:
+            from ui.frontier_view import FrontierView
+            from services.userdata import user_data_dir
+            from core.config import ROOT
+            output=ROOT/'experiments'/'frontier' if root.resolve()==user_data_dir().resolve() and not getattr(sys,'frozen',False) else root/'frontier'
+            self.frontier_view=FrontierView(root,lambda:self.lab_view.lab,output)
         elif destination=='arena' and self.arena_view is None:
             from ui.arena_view import ArenaView
             self.arena_view=ArenaView(root)
@@ -321,8 +348,8 @@ class Application:
                 (position[1] - view.y) * 720 / view.height)
 
     def handle_event(self, event):
-        if self.screen in ('training','arena'):
-            view=self.training_view if self.screen=='training' else self.arena_view
+        if self.screen in ('training','arena','frontier'):
+            view=self.frontier_view if self.screen=='frontier' else self.training_view if self.screen=='training' else self.arena_view
             position=self.mouse_position(getattr(event,'pos',pygame.mouse.get_pos()))
             if event.type==pygame.WINDOWFOCUSLOST and self.screen=='arena':
                 view.pause()
@@ -353,15 +380,15 @@ class Application:
                     self.player_name = self.player_name[:-1]
                 return
             if event.key == pygame.K_ESCAPE:
-                if self.screen in ('training','arena'):
-                    self.action('train:back' if self.screen=='training' else 'arena:back')
+                if self.screen in ('training','arena','frontier'):
+                    self.action('frontier:back' if self.screen=='frontier' else 'train:back' if self.screen=='training' else 'arena:back')
                 elif self.screen in ("neural", "neural_loading", "neural_unavailable"):
                     self.action("ai")
                 elif self.screen in ("game", "countdown"):
                     self.action("pause")
                 elif self.screen == "pause":
                     self.action("resume")
-                elif self.screen in ("settings", "ai", "over", "modes", "challenges", "leaderboard"):
+                elif self.screen in ("settings", "ai", "training_hub", "over", "modes", "challenges", "leaderboard"):
                     self.action("menu")
             elif self.screen == "game" and event.key in KEYS:
                 # OS key-repeat must not displace a deliberate corner input.
@@ -379,8 +406,8 @@ class Application:
                 self.action(action)
 
     def update(self, dt):
-        if self.screen in ('training','arena'):
-            view=self.training_view if self.screen=='training' else self.arena_view
+        if self.screen in ('training','arena','frontier'):
+            view=self.frontier_view if self.screen=='frontier' else self.training_view if self.screen=='training' else self.arena_view
             view.update(dt)
             self.controls=view.buttons
             return
@@ -481,8 +508,11 @@ class Application:
             menu.draw(self.canvas, self.screen == "ai", self.assets)
         elif self.screen == "neural":
             self.lab_view.draw(self.canvas)
-        elif self.screen in ('training','arena'):
-            (self.training_view if self.screen=='training' else self.arena_view).draw(self.canvas)
+        elif self.screen=='training_hub':
+            from ui.components import backdrop
+            backdrop(self.canvas,'SNAKE INFINITE / AI','TRAINING CENTER','Legacy tools or the Frontier headless workflow')
+        elif self.screen in ('training','arena','frontier'):
+            (self.frontier_view if self.screen=='frontier' else self.training_view if self.screen=='training' else self.arena_view).draw(self.canvas)
         elif self.screen in ("neural_loading", "neural_unavailable"):
             from ui.components import backdrop
             title = {"neural_loading": "LOADING AI RUNTIME", "neural_unavailable": "AI DEPENDENCIES REQUIRED"}[self.screen]
@@ -558,6 +588,8 @@ class Application:
             self.close()
 
     def close(self):
+        if self.frontier_view:
+            self.frontier_view.close()
         if self.training_view:
             self.training_view.close()
         self.finish_session()

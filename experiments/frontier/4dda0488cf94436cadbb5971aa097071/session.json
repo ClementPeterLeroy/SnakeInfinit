@@ -1,0 +1,65 @@
+{
+  "status": "Stopped",
+  "message": "Worker closed at a safe step; last message: In-memory state retained, including the current episode",
+  "profiling": {
+    "environment_step": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "state_encoding": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "neural_inference": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "replay_sampling": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "forward_backward": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "optimizer_update": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "metrics_aggregation": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "checkpoint_serialization": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "ui_synchronization": {
+      "seconds": 0.0,
+      "calls": 0
+    }
+  },
+  "metrics": {
+    "episode": 1377,
+    "completed": 1377,
+    "score": 28,
+    "best": 31,
+    "average": 9.66,
+    "epsilon": 0.050000000000000044,
+    "loss": 0.35337767004966736,
+    "steps": 182439,
+    "apples": 3669,
+    "collisions": 1371,
+    "stagnations": 6,
+    "elapsed": 555.4809174999828,
+    "gradient_norm": 0.7081201076507568,
+    "last_reason": "self_collision",
+    "average_length": 132.49019607843138,
+    "reward_total": 21176.06999999485,
+    "parameter_count": 355,
+    "collision_frequency": 0.9956427015250545,
+    "stagnation_frequency": 0.004357298474945534,
+    "apples_per_step": 0.020110831565619193
+  },
+  "optimizer_updates": 182376
+}

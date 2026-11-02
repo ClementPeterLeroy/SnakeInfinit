@@ -5,6 +5,7 @@ from pathlib import Path
 import sqlite3
 from ai.analysis_stats import Dataset,EpisodeRecord
 from ai.history import HistoryStore,legacy_dataset
+from services.checkpoint_catalog import checkpoint_roots
 
 
 @dataclass(frozen=True)
@@ -32,8 +33,8 @@ class AnalysisRepository:
     def signature(self):
         """Cheap background invalidation for journals and newly published results."""
         paths=[self.history.path,Path(str(self.history.path)+'-wal')]
-        for name in ('checkpoints','evaluations'):
-            root=self.profile/name
+        for root in (*checkpoint_roots(self.profile/'checkpoints'),self.profile/'evaluations',self.profile/'frontier_index'):
+            name=root.name
             if root.exists():
                 paths.extend(root.glob('*/*.json') if name=='checkpoints' else root.glob('*.json'))
                 if name=='checkpoints':paths.extend(root.glob('*/*/training.json'))
@@ -48,8 +49,8 @@ class AnalysisRepository:
     def choices(self):
         result=[]
         checkpoints=[]
-        root=self.profile/'checkpoints'
-        if root.exists():
+        for root in checkpoint_roots(self.profile/'checkpoints'):
+            if not root.exists():continue
             for run in sorted(root.iterdir()):
                 if not run.is_dir() or run.is_symlink():continue
                 for folder in sorted(run.iterdir()):
@@ -58,7 +59,7 @@ class AnalysisRepository:
                     try:
                         if path.stat().st_size>200000:continue
                         metadata=json.loads(path.read_text(encoding='utf-8'))
-                        if metadata.get('format_version')!=1 or metadata.get('kind')!='resumable-boundary':continue
+                        if metadata.get('format_version')!=1 or metadata.get('kind') not in ('resumable-boundary','model-snapshot'):continue
                         if type(metadata['episode']) is not int or metadata['episode']<0:continue
                         if metadata['model_identifier']!=run.name:continue
                         checkpoints.append((metadata['episode'],Choice(str(folder.resolve()),
@@ -96,6 +97,14 @@ class AnalysisRepository:
             return Dataset(dataset.identifier,dataset.name,records,architecture=dataset.architecture,status=dataset.status,
                 checkpoint=str(choice.checkpoint) if choice.checkpoint else None,configuration=dataset.configuration,limitations=limits)
         if choice.kind=='checkpoint':
+            metadata=json.loads((choice.source/'training.json').read_text(encoding='utf-8'))
+            if metadata.get('experiment_id') and metadata.get('history_root'):
+                journal=HistoryStore(Path(metadata['history_root'])).load(metadata['history_run'])
+                records=tuple(r for r in journal.records if r.episode<=choice.episode)
+                return replace(journal,identifier=choice.identifier,name=choice.model_name,
+                    records=records,checkpoint=str(choice.checkpoint),checkpoint_episode=choice.episode,
+                    status='Training history through checkpoint',
+                    limitations=('Frontier recorded training episodes through this checkpoint; not frozen evaluation data.',))
             dataset=legacy_dataset(choice.source)
             # Bound every history to this immutable snapshot. Enrich only with
             # actual journal records whose counters and overlapping values agree.

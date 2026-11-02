@@ -1,0 +1,42 @@
+{
+  "format_version": 1,
+  "application_version": "v1.5.1",
+  "created_utc": "2026-11-02T07:45:11.618576+00:00",
+  "architecture": {
+    "hidden_sizes": [
+      16,
+      8
+    ],
+    "activation": "relu",
+    "seed": 0,
+    "input_size": 11,
+    "output_size": 3
+  },
+  "features": [
+    "Danger straight",
+    "Danger right",
+    "Danger left",
+    "Moving up",
+    "Moving down",
+    "Moving left",
+    "Moving right",
+    "Food above",
+    "Food below",
+    "Food left",
+    "Food right"
+  ],
+  "actions": [
+    "Straight",
+    "Turn left",
+    "Turn right"
+  ],
+  "weights_file": "snake_dqn_11_ep001000_model.pt",
+  "sha256": "b4716f5653fe40dfcd2dabdeae4cad211c3e89f9c3c9c670eec44e5e094525f7",
+  "manual_edits": [],
+  "supervised_demo_steps": 0,
+  "reinforcement_learning": true,
+  "experiment_id": "4dda0488cf94436cadbb5971aa097071",
+  "model_name": "Snake DQN Frontier",
+  "observation_encoder": "snake-classic-binary11-v1",
+  "episode": 1000
+}
