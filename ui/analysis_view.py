@@ -5,6 +5,7 @@ from pathlib import Path
 import threading
 import time
 from uuid import uuid4
+from dataclasses import dataclass
 import pygame
 from ai.analysis_repository import AnalysisRepository
 from ai.analysis_model import AnalysisModel
@@ -14,6 +15,11 @@ from ai.experiments import Experiment,ExperimentStore,BASELINE_ENCODER
 from ui.ai_components import FormView
 from ui.analysis_chart import AnalysisChart,MODEL_COLORS
 from ui.components import BG,PANEL,TEXT,MUTED,GREEN,label
+
+@dataclass
+class LoadedDatasets:
+    datasets: tuple
+    leases: list
 
 
 class AnalysisView(FormView):
@@ -45,6 +51,7 @@ class AnalysisView(FormView):
         self.signatures=None
         self.refresh_at=0.
         self.last_experiment_id=None
+        self.leases=[];self.suppress_auto_select=False
         self.layout()
 
     def submit(self,key,operation,*args,callback=None):
@@ -66,13 +73,13 @@ class AnalysisView(FormView):
                 self.indices[slot]=next((i for i,c in enumerate(catalog) if c.identifier==identifier),None)
                 if self.indices[slot] is None and old_models[slot] in self.model_keys():
                     self.indices[slot]=self.default_choice(old_models[slot])
-        if catalog and (not old_ids[0] or self.indices[0] is None):
+        if catalog and not self.suppress_auto_select and (not old_ids[0] or self.indices[0] is None):
             self.indices[0]=self.default_choice(self.model_keys()[0])
         for slot in (0,1):
             selected=self.selected(slot)
             if selected and selected.kind=='journal' and self.checkpoints(selected.model_key):
                 self.indices[slot]=self.default_choice(selected.model_key)
-        if catalog:self.load_selected()
+        if catalog and self.indices[0] is not None:self.load_selected()
         else:
             self.indices=[None,None]
             self.load_selected()
@@ -106,13 +113,29 @@ class AnalysisView(FormView):
         self.bundle=None
         self.datasets=[None,None]
         if self.indices[0] is None or not choices:
+            for token in self.leases:self.repository.library.release(token)
+            self.leases=[]
             self.status='Model A is required; no model data is available'
             return
         self.status='Loading exact raw records in background'
         generation=self.generation
-        def load():return tuple(self.repository.load(c) for c in choices)
-        def ready(data):
-            if generation!=self.generation:return
+        def load():
+            tokens=[]
+            try:
+                for choice in choices:
+                    if choice.checkpoint_id:
+                        cp=self.repository.library.checkpoint(choice.checkpoint_id)
+                        tokens.append(self.repository.library.acquire(cp['generation_id'],'Analysis',cp['id']))
+                return LoadedDatasets(tuple(self.repository.load(c) for c in choices),tokens)
+            except BaseException:
+                for token in tokens:self.repository.library.release(token)
+                raise
+        def ready(loaded):
+            if generation!=self.generation:
+                for token in loaded.leases:self.repository.library.release(token)
+                return
+            for token in self.leases:self.repository.library.release(token)
+            self.leases=loaded.leases;data=loaded.datasets
             self.datasets=list(data)+[None]*(2-len(data))
             records=[r for d in data for r in d.records]
             if self.alignment=='steps' and any(r.cumulative_steps is None for r in records):
@@ -128,6 +151,24 @@ class AnalysisView(FormView):
             self.ranges[self.alignment]=(int(self.text['start']),int(self.text['end']))
             self.prepare()
         self.submit('load',load,callback=ready)
+
+    def select_library(self,checkpoint,slot=0):
+        self.suppress_auto_select=False
+        catalog=self.repository.choices()
+        old=[self.selected(i).identifier if self.selected(i) else None for i in (0,1)]
+        self.catalog=catalog
+        self.indices=[next((i for i,c in enumerate(catalog) if c.identifier==identifier),None) for identifier in old]
+        index=next((i for i,c in enumerate(catalog) if c.checkpoint_id==checkpoint and c.kind!='evaluation'),None)
+        if index is None:raise ValueError('No recorded analysis source exists for that checkpoint')
+        self.indices[slot]=index
+        if self.indices[0] is None and slot==1:raise ValueError('Select Model A first')
+        self.load_selected();self.layout()
+
+    def unload(self):
+        self.generation+=1;self.suppress_auto_select=True
+        for token in self.leases:self.repository.library.release(token)
+        self.leases=[];self.datasets=[None,None];self.indices=[None,None];self.bundle=None
+        self.layout()
 
     def prepare(self):
         datasets=tuple(d for d in self.datasets if d is not None)
@@ -301,7 +342,7 @@ class AnalysisView(FormView):
                         ExperimentStore(self.profile/'experiments').link(identifier,'evaluation',path)
                     self.refresh()
                 self.submit('evaluation',evaluate_checkpoints,[c.checkpoint for c in choices],tuple(range(seed,seed+n)),
-                    self.profile/'evaluations',self.cancel,progress,callback=ready)
+                    self.profile/'evaluations',self.cancel,progress,None,self.repository.library,[c.checkpoint_id for c in choices],callback=ready)
                 self.status='Evaluation uses identical seeds and the first checkpoint’s explicit termination settings'
             elif action=='experiment':
                 dataset=self.datasets[0]
@@ -354,6 +395,15 @@ class AnalysisView(FormView):
         self.cancel.set()
         self.waiting.clear()
         self.pool.shutdown(wait=True,cancel_futures=True)
+        for future,_ in self.jobs.values():
+            if future.done() and not future.cancelled():
+                try:
+                    value=future.result()
+                    if isinstance(value,LoadedDatasets):
+                        for token in value.leases:self.repository.library.release(token)
+                except Exception:pass
+        for token in self.leases:self.repository.library.release(token)
+        self.leases=[]
 
     def draw(self,surface,mouse):
         for slot,x in enumerate((24,640)):

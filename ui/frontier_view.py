@@ -36,6 +36,8 @@ class FrontierView(FormView):
         self.advanced_page=0
         self.source='new'
         self.model_configuration='A'
+        self.pending_generation=None
+        self.library_checkpoint=None
         self.selected=0
         self.refresh=100
         self.headless=True
@@ -47,7 +49,7 @@ class FrontierView(FormView):
         self.library=[]
         self.library_at=0.
         self.text={key:str(value) for key,value in TrainingConfig().to_dict().items()}
-        self.text.update(name='Snake DQN Frontier',hidden='16,8',activation='relu',recovery_interval='1000',recovery_slots='2',output=str(output))
+        self.text.update(name='',hidden='16,8',activation='relu',recovery_interval='1000',recovery_slots='2',output=str(output))
         self.status='Choose collector count and policy. New experiments never overwrite existing runs.'
         self.analysis=AnalysisView(profile)
         self.analysis.prefix='frontier:analysis:'
@@ -70,7 +72,7 @@ class FrontierView(FormView):
         else:architecture=NetworkConfig(tuple(int(v.strip()) for v in self.text['hidden'].split(',') if v.strip()) or (16,8),self.text['activation'],config.seed)
         execution=FrontierConfig(self.refresh,self.headless,int(self.text['recovery_interval']),int(self.text['recovery_slots']),
             profiling=self.profiling,environments=self.environments,strategy=self.strategy,update_policy=self.update_policy)
-        if not 1<=len(self.text['name'].strip())<=40:raise ValueError('Model name must contain 1..40 characters')
+        if len(self.text['name'].strip())>160:raise ValueError('Description must contain at most 160 characters')
         if not self.text['output'].strip():raise ValueError('Choose an experiment output directory')
         return config,architecture,execution
 
@@ -80,6 +82,10 @@ class FrontierView(FormView):
         return keys
 
     def model_info(self):
+        if self.source in ('library','library_model'):
+            from ai.model_library import ModelLibrary
+            cp=ModelLibrary(self.profile).resolve(self.library_checkpoint,'resume' if self.source=='library' else 'inference',False)
+            return identity(parse_model_config(cp['data']))
         if self.source=='new':return identity(self.configuration()[1])
         if self.source=='lab':return identity(self.lab_provider().network.config)
         if self.source=='resume':
@@ -106,8 +112,10 @@ class FrontierView(FormView):
                 self.button('BASIC',24,120,180,'advanced')
                 self.button('ADVANCED PAGE '+str(self.advanced_page+1),220,120,300,'advanced_page')
             else:
-                self.button('SOURCE: '+self.source,24,120,300,'source')
-                title=self.model_configuration+': '+LINEUP[self.model_configuration][0] if self.source=='new' else 'ARCHITECTURE / ENCODER FROM SAVED MODEL'
+                self.button('MODEL LIBRARY / CONTINUE',24,120,300,'source')
+                self.buttons[-1].action='choose_model:frontier_resume'
+                family={'A':'Alpha','B':'Distance','C':'CNN','D':'oCNN'}[self.model_configuration]
+                title=family+' / NEW GENERATION' if self.source=='new' else 'EXISTING GENERATION / SAVED CONFIGURATION'
                 self.button(title,334,120,600,'model_configuration')
                 self.button('ADVANCED DQN',960,120,270,'advanced')
                 for key,x,y,width in (('name',24,210,580),('episodes',24,285,270),('seed',334,285,270),
@@ -147,6 +155,7 @@ class FrontierView(FormView):
             elif action=='model_configuration':
                 if self.source!='new':raise ValueError('Saved models restore their own architecture and encoder. Choose new to select A/B/C/D.')
                 keys=tuple(LINEUP)
+                self.pending_generation=None
                 self.model_configuration=keys[(keys.index(self.model_configuration)+1)%4]
                 self.text['hidden']=','.join(map(str,LINEUP[self.model_configuration][3]))
                 self.text['activation']='relu'
@@ -164,6 +173,14 @@ class FrontierView(FormView):
                 if self.worker and self.worker.thread.is_alive() and self.snapshot and self.snapshot.status=='Running':
                     raise ValueError('Pause or stop the current session before starting a new experiment')
                 resume=network=None
+                if self.source=='library_model':
+                    from ai.model_library import ModelLibrary
+                    network,_=ModelLibrary(self.profile).load(self.library_checkpoint)
+                if self.source=='library':
+                    from ai.model_library import ModelLibrary
+                    cp=ModelLibrary(self.profile).resolve(self.library_checkpoint,'resume')
+                    resume=Path(cp['path']);metadata=cp['data']
+                    config=replace(TrainingConfig.from_dict(metadata['hyperparameters']),episodes=config.episodes)
                 if self.source=='resume':
                     entries=self.entries()
                     if not entries:raise ValueError('No resumable checkpoints available')
@@ -173,10 +190,10 @@ class FrontierView(FormView):
                     config=replace(TrainingConfig.from_dict(metadata['hyperparameters']),episodes=config.episodes)
                     if config.episodes<metadata['episode']:raise ValueError('Target must include completed episodes')
                 elif self.source=='lab':network=copy.deepcopy(self.lab_provider().network)
-                elif self.source!='new':network,_=self.models.load(self.source)
+                elif self.source not in ('new','library','library_model'):network,_=self.models.load(self.source)
                 if self.worker:self.worker.shutdown()
                 self.worker=FrontierWorker(self.profile,Path(self.text['output']))
-                self.worker.start(config,execution,architecture,network,resume,self.text['name'].strip())
+                self.worker.start(config,execution,architecture,network,resume,self.text['name'].strip(),self.pending_generation)
                 self.page='dashboard';self.cache_key=None
             elif self.worker:
                 if action=='files':
@@ -284,10 +301,10 @@ class FrontierView(FormView):
                         shape='3x25x25 + heading4' if isinstance(info['input_shape'],dict) else str(info['input_shape'])
                         label(surface,f"{info['architecture_name']} / {info['encoder_name']} / {shape} / {info['parameter_count']:,} parameters",(24,163),13,GREEN,False)
                 except (ValueError,TypeError,OSError):pass
-                for title,x,y in (('MODEL NAME',24,185),('EPISODE BUDGET',24,260),('SEED',334,260),
+                for title,x,y in (('EXPERIMENT DESCRIPTION (OPTIONAL)',24,185),('EPISODE BUDGET',24,260),('SEED',334,260),
                     ('RECOVERY INTERVAL (EP)',650,260),('ROTATING SLOTS',960,260),('EXPERIMENT OUTPUT DIRECTORY',24,442)):
                     label(surface,title,(x,y),14,MUTED,False)
-                label(surface,'A: Legacy11 / B: Distance19 / C: Binary CNN / D: Ordered CNN. One shared learner and replay.',(24,572),15,TEXT,False)
+                label(surface,'Alpha / Distance / CNN / oCNN. One shared learner and replay; Frontier is the training interface.',(24,572),15,TEXT,False)
                 label(surface,'Vector-step updates use fewer updates per transition. Resume restores saved collection and learning settings.',(24,602),14,MUTED,False)
             self.draw_fields(surface)
         else:

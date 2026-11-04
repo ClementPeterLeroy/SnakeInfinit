@@ -19,6 +19,7 @@ class NeuralView:
         self.checkpoints=CheckpointStore(self.store.root.parent/'checkpoints')
         self.checkpoint_index=0
         self.loaded_checkpoint=None
+        self.source_library=None;self.source_lease=None
         self.tab = "lab"
         self.fields = {}
         self.focus = None
@@ -101,15 +102,8 @@ class NeuralView:
         else:
             self.field("name", 90, 245, 620)
             self.add("SAVE CURRENT NETWORK", 90, 295, 300, "save")
-            names = self.store.names()
-            name = names[self.selected_model % len(names)] if names else "No saved networks"
-            self.add(name, 90, 405, 620, "next_model")
-            self.add("LOAD TRUSTED MODEL", 90, 455, 300, "load")
-            entries=self.checkpoints.entries()
-            entry=entries[self.checkpoint_index%len(entries)] if entries else None
-            title=f"{entry['name']} / episode {entry['episode']}" if entry else 'No trained checkpoints'
-            self.add(title,90,502,620,'next_checkpoint')
-            self.add('LOAD TRUSTED CHECKPOINT',90,545,350,'load_checkpoint')
+            self.add('MODEL LIBRARY / ALPHA GENERATIONS & CHECKPOINTS',90,425,620,'load_checkpoint')
+            self.buttons[-1].action='choose_model:lab'
         if self.tab != "config":
             self.add(f"LAYER {self.layer} / NEXT", 860, 153, 220, "layer")
             self.field("neuron", 1150, 153, 90)
@@ -167,12 +161,27 @@ class NeuralView:
         return int(self.text["seed"]) if self.text["seed"].strip() else None
 
     def load_checkpoint(self,path):
-        model,metadata=self.checkpoints.load_model(path)
+        from ai.model_library import ModelLibrary
+        library=ModelLibrary(self.store.root.parent);library.scan()
+        cp=library.find_checkpoint(path)
+        identifier=cp['id'] if cp else library.index_checkpoint(path)
+        model,metadata=library.load(identifier,'lab')
+        return self.load_library_network(model,metadata,library,identifier)
+
+    def unload_source(self):
+        if self.source_library:self.source_library.release(self.source_lease)
+        self.source_lease=None;self.loaded_checkpoint=None
+
+    def load_library_network(self,model,metadata,library=None,checkpoint=None):
         if not isinstance(model.config,NetworkConfig):raise ValueError('Use Frontier and Arena for registered models; neuron editing supports the legacy 11-input MLP')
+        token=library.acquire(metadata['generation_id'],'Neural Laboratory',checkpoint) if library else None
+        self.unload_source();self.source_library,self.source_lease=library,token
         self.live.stop()
         self.lab.replace_network(model)
-        self.loaded_checkpoint=metadata
-        self.live.model_label=f"CHECKPOINT EPISODE {metadata['episode']}"
+        self.lab.demo_steps=metadata.get('supervised_demo_steps',0)
+        trained=metadata.get('reinforcement_learning') or metadata.get('kind') in ('resumable-boundary','model-snapshot')
+        self.loaded_checkpoint=metadata if trained else None
+        self.live.model_label=f"CHECKPOINT EPISODE {metadata.get('episode',0)}" if trained else 'SAVED / UNTRAINED NETWORK'
         self.live.decision=self.live.previous_decision=None
         self.show_decision=False
         self.hidden=list(model.config.hidden_sizes)
@@ -237,6 +246,7 @@ class NeuralView:
             operation, value = self.pending
             self.pending = None
             if operation == "build":
+                self.unload_source()
                 self.lab.build(value)
                 self.loaded_checkpoint=None
                 self.live.model_label='UNTRAINED'

@@ -1,6 +1,6 @@
 """CPU Frontier worker with one shared learner and ordered environment collectors."""
 from collections import deque
-from dataclasses import dataclass,replace
+from dataclasses import dataclass,replace,asdict
 from pathlib import Path
 import queue
 from statistics import fmean,median
@@ -19,6 +19,8 @@ from ai.training_config import TrainingConfig
 from ai.model_registry import identity
 from ai.parallel import ParallelTrainer,Completion
 from services.training_time import CompletionRate
+from ai.model_library import ModelLibrary,FAMILIES
+from uuid import uuid4
 
 
 class FrontierHistory(HistoryStore):
@@ -34,20 +36,39 @@ class FrontierHistory(HistoryStore):
         self.environments=[]
 
     def record(self,record,diagnostics,environment=0,sequence=None):
+        values=(record,diagnostics)
+        association=(record.run_id,record.episode,environment,record.episode-1 if sequence is None else sequence)
+        for existing,old_association in zip(self.pending,self.environments):
+            if (existing[0].run_id,existing[0].episode)==(record.run_id,record.episode):
+                if existing!=values or association!=old_association:raise ValueError('Conflicting committed completion')
+                return
         self.pending.append((record,diagnostics))
-        self.environments.append((record.run_id,record.episode,environment,record.episode-1 if sequence is None else sequence))
+        self.environments.append(association)
         if len(self.pending)>=25:self.flush()
 
     def flush(self):
         if self.pending:
             with self._writer() as db:
-                db.executemany('INSERT INTO episodes VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-                    [tuple(getattr(record,k) for k in tuple(record.__dataclass_fields__)[:11]) for record,_ in self.pending])
-                db.executemany('INSERT INTO episode_diagnostics VALUES (?,?,?,?,?,?)',[values for _,values in self.pending])
-                db.executemany('INSERT INTO episode_environments VALUES (?,?,?,?)',self.environments)
+                for (record,diagnostics),association in zip(self.pending,self.environments):
+                    values=tuple(getattr(record,k) for k in tuple(record.__dataclass_fields__)[:11])
+                    old=db.execute('SELECT * FROM episodes WHERE run_id=? AND episode=?',values[:2]).fetchone()
+                    if old is not None and old!=values:raise ValueError('History conflict for committed completion')
+                    old_diagnostics=db.execute('SELECT * FROM episode_diagnostics WHERE experiment_id=? AND episode=?',values[:2]).fetchone()
+                    old_association=db.execute('SELECT * FROM episode_environments WHERE run_id=? AND episode=?',values[:2]).fetchone()
+                    if old_diagnostics is not None and old_diagnostics!=diagnostics:raise ValueError('Conflicting completion diagnostics')
+                    if old_association is not None and old_association!=association:raise ValueError('Conflicting environment association')
+                    db.execute('INSERT OR IGNORE INTO episodes VALUES (?,?,?,?,?,?,?,?,?,?,?)',values)
+                    db.execute('INSERT OR IGNORE INTO episode_diagnostics VALUES (?,?,?,?,?,?)',diagnostics)
+                db.executemany('INSERT OR IGNORE INTO episode_environments VALUES (?,?,?,?)',self.environments)
             self.pending.clear()
             self.environments.clear()
         super().flush()
+
+    def emergency_save(self,root):
+        if self.pending:
+            atomic_json(Path(root)/'pending-completions.json',{'schema_version':1,
+                'records':[asdict(record) for record,_ in self.pending],
+                'diagnostics':[diagnostics for _,diagnostics in self.pending],'environments':self.environments})
 
 
 @dataclass(frozen=True)
@@ -74,10 +95,10 @@ class FrontierWorker:
         self.thread=None
         self._trainer=None  # Worker-owned; never accessed by presentation code.
 
-    def start(self,config=TrainingConfig(),execution=FrontierConfig(),architecture=None,network=None,resume=None,name='Snake DQN Frontier'):
+    def start(self,config=TrainingConfig(),execution=FrontierConfig(),architecture=None,network=None,resume=None,name='',generation=None):
         if self.thread and self.thread.is_alive():raise ValueError('A Frontier session is already active')
         if not isinstance(config,TrainingConfig) or not isinstance(execution,FrontierConfig):raise ValueError('Invalid Frontier configuration')
-        self.thread=threading.Thread(target=self._run,args=(config,execution,architecture,network,resume,name),name='snake-frontier',daemon=True)
+        self.thread=threading.Thread(target=self._run,args=(config,execution,architecture,network,resume,name,generation),name='snake-frontier',daemon=True)
         self.thread.start()
 
     def command(self,command,value=None):self.commands.put((command,value))
@@ -91,7 +112,7 @@ class FrontierWorker:
             self.thread.join(timeout=30)
             if self.thread.is_alive():raise RuntimeError('Frontier is still reaching a safe checkpoint boundary; wait before closing')
 
-    def _run(self,config,execution,architecture,network,resume,name):
+    def _run(self,config,execution,architecture,network,resume,name,generation):
         import torch
         torch.set_num_threads(1)
         store=journal=trainer=None
@@ -117,6 +138,22 @@ class FrontierWorker:
         aggregate=AnalysisModel()
         completion_rate=CompletionRate()
         session_started=time.perf_counter()
+        recorded=set()
+        library=None
+        lease=None;generation_id=None
+        training_lease=True
+
+        def drain(completions):
+            for finished in completions:
+                if finished.index in recorded:continue
+                record=EpisodeRecord(store.identifier,finished.index,finished.score,finished.length,finished.reward,
+                    finished.reason,finished.steps,finished.epsilon,trainer.elapsed,finished.score,finished.seed,
+                    environment_id=finished.environment,local_sequence=finished.sequence)
+                # Queue first; a flush failure retains the queue for idempotent retry.
+                journal.record(record,(store.identifier,finished.index,finished.updates,
+                    finished.mean_loss,finished.loss,finished.gradient_norm),finished.environment,finished.sequence)
+                recorded.add(finished.index);records.append(record)
+                if finished.loss is not None:losses.append(finished.loss)
 
         def flush():
             if journal:journal.flush()
@@ -126,13 +163,22 @@ class FrontierWorker:
             flush()
             with profiler.measure('checkpoint_serialization'):
                 folder,published=store.save(trainer,kind,execution.recovery_slots)
+            library.index_checkpoint(folder,generation=generation_id)
             checkpoint=str(folder)
             if published:model=str(published)
             experiments.link(store.identifier,'checkpoint',folder)
             return folder
 
         def publish(include_charts=False):
-            nonlocal publications,charts,last_cpu,last_sample,published_steps
+            nonlocal publications,charts,last_cpu,last_sample,published_steps,lease,training_lease
+            if generation_id and lease:
+                if status=='Completed' and training_lease:
+                    library.release(lease)
+                    cp=library.find_checkpoint(checkpoint) if checkpoint else None
+                    lease=library.acquire(generation_id,'Completed Frontier session',cp['id'] if cp else None)
+                    training_lease=False
+                library.status(generation_id,{'Running':'Training','Save failed':'Failed'}.get(status,status),lease)
+                if trainer:library.progress(generation_id,trainer.completed,trainer.total_steps)
             with profiler.measure('metrics_aggregation'):
                 metrics=trainer.metrics() if trainer else {}
                 if trainer:
@@ -152,7 +198,7 @@ class FrontierWorker:
                         rolling_mean=fmean(recent) if recent else None,rolling_median=median(recent) if recent else None,
                         mean_length=fmean(lengths) if lengths else None,median_length=median(lengths) if lengths else None,
                         steps_per_second=(trainer.total_steps-started_steps)/seconds,episodes_per_second=eps,
-                        optimizer_updates=updates,optimizer_updates_per_second=(updates-started_updates)/seconds,
+                        optimizer_updates=trainer.optimizer_updates,optimizer_updates_per_second=(trainer.optimizer_updates-started_updates)/seconds,
                         session_wall_seconds=time.perf_counter()-session_started,
                         eta=completion_rate.remaining(trainer.config.episodes-trainer.completed),
                         environments=execution.environments,strategy=execution.resolved_strategy,
@@ -179,12 +225,14 @@ class FrontierWorker:
                 with self.lock:self.snapshot=snapshot
 
         try:
+            library=ModelLibrary(self.profile);library.scan()
             if resume:
                 trainer,metadata=CheckpointStore(self.profile/'checkpoints').resume(resume)
                 if config.episodes<trainer.completed:raise ValueError('Target must include completed checkpoint episodes')
                 trainer.config=replace(trainer.config,episodes=config.episodes)
                 trainer.environment.config=trainer.config
                 config=trainer.config
+                checkpoint=str(resume)
             elif execution.environments>1 or execution.resolved_strategy=='multiprocessing' or execution.update_policy=='vector':
                 trainer=ParallelTrainer(config,execution,network,architecture)
             else:trainer=Trainer(config,network,architecture)
@@ -193,7 +241,18 @@ class FrontierWorker:
                     strategy=trainer.execution.strategy,update_policy=trainer.execution.update_policy)
             elif resume:execution=replace(execution,environments=1,strategy='vectorized',update_policy='transition')
             self._trainer=trainer
-            store=FrontierStore(self.output,self.profile,config,execution,name,resumed_from=resume)
+            run=uuid4().hex
+            model_info=identity(trainer.online.config)
+            family=next(f for f,c in FAMILIES.items() if c==model_info['model_configuration_id'])
+            generation_id=library.register_run(run,family,self.output/run,'Frontier',generation=generation,resume=resume,
+                description='' if name=='Snake DQN Frontier' else name,data={'training':config.to_dict()})
+            lease=library.acquire(generation_id,'Frontier Training',training=True)
+            name=library.get(generation_id)['name'];trainer.generation_id=generation_id
+            trainer.generation_number=library.get(generation_id)['number']
+            trainer.training_interface='Frontier'
+            library.allow_root(self.output)
+            store=FrontierStore(self.output,self.profile,config,execution,name,identifier=run,resumed_from=resume)
+            store.metadata.update(generation_id=generation_id,generation_number=library.get(generation_id)['number'],family=family)
             store.metadata['architecture']=trainer.online.config.to_dict()
             model_info=identity(trainer.online.config)
             store.metadata.update(model_info,input_count=trainer.online.config.input_size)
@@ -301,15 +360,7 @@ class FrontierWorker:
                         episode_updates=0;episode_loss=0.
                 updates=trainer.optimizer_updates
                 if completions:completion_rate.update(trainer.completed,active+time.perf_counter()-accounted)
-                for finished in completions:
-                    env=trainer.environment
-                    record=EpisodeRecord(store.identifier,finished.index,finished.score,finished.length,finished.reward,
-                        finished.reason,finished.steps,finished.epsilon,trainer.elapsed+(time.perf_counter()-accounted),finished.score,finished.seed,
-                        environment_id=finished.environment,local_sequence=finished.sequence)
-                    records.append(record)
-                    journal.record(record,(store.identifier,finished.index,finished.updates,
-                        finished.mean_loss,finished.loss,finished.gradient_norm),finished.environment,finished.sequence)
-                    if finished.loss is not None:losses.append(finished.loss)
+                drain(completions)
                 if completions:
                     previous=trainer.completed-len(completions)
                     if trainer.completed<config.episodes:
@@ -319,6 +370,7 @@ class FrontierWorker:
                                 with profiler.measure('checkpoint_serialization'):
                                     folder,published=store.snapshot(trainer)
                                 checkpoint,model=str(folder),str(published)
+                                library.index_checkpoint(folder,generation=generation_id)
                                 experiments.link(store.identifier,'checkpoint',folder)
                             if trainer.completed//execution.recovery_interval>previous//execution.recovery_interval:save()
                         except Exception as error:
@@ -331,9 +383,22 @@ class FrontierWorker:
             journal.status(store.identifier,status if status=='Completed' else 'Stopped')
         except Exception as error:
             status='Failed';message=str(error)
+            if trainer:updates=trainer.optimizer_updates
+            if isinstance(trainer,ParallelTrainer) and journal:
+                try:drain(trainer.completions);flush()
+                except Exception as history_error:
+                    message+=' / history persistence failed: '+str(history_error)
+                    try:journal.emergency_save(store.root);message+=' / committed completions saved to emergency journal'
+                    except Exception as emergency_error:message+=' / emergency journal unavailable: '+str(emergency_error)
             if isinstance(trainer,ParallelTrainer) and store:
-                try:save();message+=' / recovery saved at last committed vector state'
-                except Exception as recovery_error:message+=' / recovery unavailable: '+str(recovery_error)
+                newly_saved=False
+                if trainer.recovery_safe:
+                    try:save();newly_saved=True;message+=' / new verified recovery saved: '+checkpoint
+                    except Exception as recovery_error:message+=' / new recovery unavailable: '+str(recovery_error)
+                else:message+=' / interrupted batch is unsafe; no rollback claimed'
+                if not newly_saved:
+                    if checkpoint:message+=' / previous verified recovery: '+checkpoint
+                    else:message+=' / recovery unavailable: no verified checkpoint'
             if journal:
                 try:flush();journal.status(store.identifier,status)
                 except Exception:pass
@@ -343,10 +408,14 @@ class FrontierWorker:
             if journal:
                 try:journal.close()
                 except Exception as error:
-                    status='Failed';message='History flush failed: '+str(error);publish()
+                    status='Failed';message+=' / history flush failed: '+str(error)
+                    try:journal.emergency_save(store.root)
+                    except Exception as emergency_error:message+=' / emergency journal unavailable: '+str(emergency_error)
+                    publish()
             if store:
                 try:
                     atomic_json(store.root/'session.json',dict(status=status,message=message,profiling=profiler.report(),
                         metrics=self.latest().metrics if self.latest() else {},optimizer_updates=updates,
                         wall_seconds=time.perf_counter()-session_started))
                 finally:store.close()
+            if library:library.release(lease)

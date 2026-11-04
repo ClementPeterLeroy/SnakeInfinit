@@ -64,6 +64,8 @@ class FrontierStore:
     def details(self,trainer):
         info=identity(trainer.online.config)
         return dict(experiment_id=self.identifier,observation_encoder=info['encoder_id'],
+            generation_id=self.metadata.get('generation_id'),generation_number=self.metadata.get('generation_number'),
+            training_interface='Frontier',
             history_root=str(self.root/'history'),history_run=self.identifier,
             architecture=trainer.online.config.to_dict(),resume_strategy=self.metadata['resume_strategy'],
             collection_configuration=self.metadata['execution'],optimizer_updates=trainer.optimizer_updates,
@@ -99,8 +101,10 @@ class FrontierStore:
         with path.open('xb') as stream:
             stream.write((folder/metadata['weights_file']).read_bytes());stream.flush();os.fsync(stream.fileno())
         atomic_json(path.with_suffix('.json'),{**metadata,'experiment_id':self.identifier,'model_name':self.name,
+            'generation_id':self.metadata.get('generation_id'),'generation_number':self.metadata.get('generation_number'),
             'observation_encoder':metadata.get('encoder_id',BASELINE_ENCODER),'episode':episode,
             'environment_steps':checkpoint_metadata['environment_steps'],
+            'hyperparameters':checkpoint_metadata['hyperparameters'],
             'optimizer_updates':checkpoint_metadata.get('optimizer_updates'),
             'training_elapsed_seconds':checkpoint_metadata.get('training_elapsed_seconds'),
             'session_wall_seconds':checkpoint_metadata.get('session_wall_seconds'),

@@ -1,4 +1,4 @@
-# v1.5.3 — Parallel Frontier Training
+# Parallel Frontier Training — v1.5.3b
 
 Frontier can collect experience from **1, 2, 4 or 8 independent Classic Snake
 environments**. They share one online network, target network, Adam optimizer and
@@ -134,13 +134,18 @@ and resumable in their original path. Parallel checkpoints resume in Frontier;
 Legacy Training reports a clear routing message. Model-only snapshots still
 support frozen inference, but cannot resume training.
 
-On collector failure, the worker flushes completed records and attempts a recovery
-checkpoint at the last committed learner state, reports failures and closes owned
-children. It does not count responses from an incomplete failed collection batch.
-Exploration draws already made for that failed batch remain consumed; recovery
-does not claim numerical identity to a run in which no failure occurred.
-Numerically corrupted learner state or storage errors can prevent recovery and
-are reported explicitly; no successful recovery is assumed without a saved path.
+In v1.5.3b, recovery safety is cleared before collecting a vector batch and restored
+only after its successful commit. Any exception during collection, optimization
+or terminal cleanup prevents a new checkpoint from that partial batch. The previous
+verified recovery path is retained; reporting distinguishes a new verified save,
+a previous verified save, and unavailable recovery. Active traces are reconstructed
+and validated before checkpoint writing. No exact optimizer rollback is claimed.
+
+Committed completions are drained on success and failure and flushed idempotently
+with their environment associations. If SQLite flushing fails, an emergency
+`pending-completions.json` in the experiment folder remains readable by Analysis.
+Failure of both persistence destinations is reported explicitly. Uncommitted
+collector responses are not counted. Owned child processes are closed on failure.
 
 Experiment/checkpoint/model metadata identifies collection settings, actual
 optimizer count, training duration and session wall duration. Full session wall
@@ -148,6 +153,10 @@ time includes pauses; training elapsed time retains the existing active-time
 meaning. Normal output remains visible under `experiments/frontier/<id>/`, with
 lightweight shareable `.pt`/`.json` model pairs and separate full recovery/history.
 No historical experiment is rewritten or migrated.
+
+The [Model Library](model-library.md) adds metadata-only indexing around those
+existing files. New experiments allocate a family generation; checkpoint resume
+retains it across separately stored training sessions.
 
 ## Dashboard, timing and profiling
 

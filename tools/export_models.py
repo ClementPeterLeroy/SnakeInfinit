@@ -31,6 +31,7 @@ def export_model(source,destination,*,training=None):
     if training:
         card={key:training[key] for key in ('model_identifier','model_name','episode','environment_steps',
             'architecture','hyperparameters','created_utc')}
+        card.update({key:training[key] for key in ('generation_id','generation_number','training_interface') if key in training})
         card.update(format_version=1,purpose='Portable frozen inference model',
             source_checkpoint=source.name,resumable=False,
             note='Original weights and network metadata. Resume state remains in the local checkpoint library.')

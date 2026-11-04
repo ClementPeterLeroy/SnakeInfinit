@@ -27,6 +27,7 @@ class TrainingView(FormView):
         self.config_page=0
         self.view_index=0
         self.source='new'
+        self.library_checkpoint=None
         self.selected=0
         self.confirm=None
         self.count_key=None
@@ -64,6 +65,8 @@ class TrainingView(FormView):
             self.buttons.extend(self.analysis.buttons)
         elif self.page=='config':
             self.button(f'SOURCE: {self.source}',24,120,570,'source')
+            self.buttons[-1].text='MODEL LIBRARY / SEED NEW ALPHA GENERATION'
+            self.buttons[-1].action='choose_model:legacy_seed'
             self.button('NEXT SETTINGS PAGE',930,120,326,'page')
             keys=list(TrainingConfig().to_dict())+['hidden','activation','name']
             for position,key in enumerate(keys[self.config_page*12:(self.config_page+1)*12]):
@@ -71,7 +74,9 @@ class TrainingView(FormView):
                 self.field(key,24+column*620,204+row*64,570)
             self.button('START TRAINING',24,615,270,'start',True)
             self.button('SELECT SAVED CHECKPOINT',310,615,310,'select')
+            self.buttons[-1].action='choose_model:legacy_resume'
             self.button('RESUME SELECTED',636,615,280,'resume_saved')
+            self.buttons[-1].action='choose_model:legacy_resume'
         else:
             for i,(title,action) in enumerate((('PAUSE / RESUME','pause'),('STOP','stop'),('SAVE CHECKPOINT','save'),
                                                ('VIEW SPEED','view'),('OPEN IN ARENA','arena'),('INSPECT IN LAB','lab'))):
@@ -90,7 +95,10 @@ class TrainingView(FormView):
         config,architecture=self.configuration()
         network=None
         if not resume:
-            if self.source=='lab':
+            if self.source=='library_model':
+                from ai.model_library import ModelLibrary
+                network,_=ModelLibrary(self.store.root.parent).load(self.library_checkpoint,'lab')
+            elif self.source=='lab':
                 network=copy.deepcopy(self.lab_provider().network)
             elif self.source!='new':
                 network,_=self.models.load(self.source)

@@ -11,6 +11,7 @@ from ai.dqn import Trainer
 from ai.history import HistoryStore
 from ai.analysis_stats import EpisodeRecord
 from ai.experiments import ExperimentStore
+from ai.model_library import ModelLibrary,family_of
 
 
 @dataclass(frozen=True)
@@ -75,6 +76,8 @@ class TrainingWorker:
         history_failed=False
         experiment_id=None
         history_run=None
+        library=None;generation=None;lease=None;indexed_checkpoint=None
+        training_lease=True
         def history_call(operation,*args):
             nonlocal history_warning,history_failed
             is_journal=getattr(operation,'__self__',None) is journal
@@ -87,7 +90,16 @@ class TrainingWorker:
                 if is_journal:history_failed=True
                 return None
         def publish():
-            nonlocal last_publish
+            nonlocal last_publish,indexed_checkpoint,lease,training_lease
+            if library and generation and lease:
+                if checkpoint and checkpoint!=indexed_checkpoint:
+                    library.index_checkpoint(checkpoint,generation=generation);indexed_checkpoint=checkpoint
+                if status=='Completed' and training_lease:
+                    library.release(lease);cp=library.find_checkpoint(checkpoint)
+                    lease=library.acquire(generation,'Completed Legacy session',cp['id'] if cp else None);training_lease=False
+                lifecycle='Completed' if status=='Stopped' and trainer and trainer.completed>=trainer.config.episodes else {'Running':'Training'}.get(status,status)
+                library.status(generation,lifecycle,lease)
+                if trainer:library.progress(generation,trainer.completed,trainer.total_steps)
             metrics = trainer.metrics() if trainer else {}
             seconds = max(active_time,1e-9)
             notice=message+(' | History warning: '+history_warning if history_warning else '')
@@ -102,6 +114,7 @@ class TrainingWorker:
         try:
             # Tiny dense CPU models are faster without a large intra-op thread pool.
             torch.set_num_threads(1)
+            library=ModelLibrary(self.store.root.parent);library.scan()
             if resume:
                 if self.store.metadata(resume).get('parallel_execution'):
                     raise ValueError('Parallel checkpoints resume in Frontier Training; use Frontier to retain collection state')
@@ -116,6 +129,18 @@ class TrainingWorker:
                 checkpoint=str(resume)
             else:
                 trainer=Trainer(config or TrainingConfig(),network,architecture)
+            from ai.model_registry import identity
+            info=identity(trainer.online.config)
+            from ai.model_library import FAMILIES
+            family=next(f for f,code in FAMILIES.items() if code==info['model_configuration_id'])
+            if family!='Alpha':raise ValueError('Use Frontier Training for Distance/CNN/oCNN models')
+            generation=library.register_run(run,family,interface='Legacy',resume=resume,description='' if name=='Snake DQN Alpha' else name,
+                data={'training':trainer.config.to_dict()})
+            lease=library.acquire(generation,'Legacy Training',training=True)
+            name=library.get(generation)['name'];trainer.generation_id=generation
+            trainer.generation_number=library.get(generation)['number']
+            trainer.training_interface='Legacy'
+            if not resume:
                 checkpoint=str(self.store.save(run,name,trainer))
             # A resumed run gets a separate append-only analysis session. Old data is never rewritten.
             history_run=run+(':session:'+uuid4().hex[:12] if resume else '')
@@ -203,3 +228,4 @@ class TrainingWorker:
             publish()
         finally:
             history_call(journal.close)
+            if library:library.release(lease)

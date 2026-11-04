@@ -101,6 +101,17 @@ class HistoryStore:
             if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='episode_environments'").fetchone():
                 environments={row[0]:row[1:] for row in db.execute('SELECT episode,environment_id,local_sequence FROM episode_environments WHERE run_id=?',(run,))}
                 records=tuple(replace(r,environment_id=environments[r.episode][0],local_sequence=environments[r.episode][1]) if r.episode in environments else r for r in records)
+        emergency=self.root.parent/'pending-completions.json'
+        if emergency.is_file() and not emergency.is_symlink() and emergency.stat().st_size<=50000000:
+            payload=json.loads(emergency.read_text(encoding='utf-8'))
+            if payload.get('schema_version')!=1:raise ValueError('Unsupported emergency history schema')
+            merged={r.episode:r for r in records}
+            for row in payload['records']:
+                record=EpisodeRecord(**row)
+                if record.run_id==run:
+                    if record.episode in merged and merged[record.episode]!=record:raise ValueError('Emergency history conflicts with committed history')
+                    merged[record.episode]=record
+            records=tuple(merged[k] for k in sorted(merged))
         return Dataset(metadata['identifier'],metadata['name'],records,architecture=metadata['architecture'],
                        status=metadata['status'],configuration=metadata['configuration'],model_identity=metadata['configuration'].get('model_identity'))
 

@@ -26,6 +26,7 @@ class ArenaView(FormView):
         self.metadata_key=None
         self.selection_metadata=None
         self.displayed_seed=0
+        self.model_library=None;self.lease=None
         self.layout()
 
     def selection(self):
@@ -44,10 +45,8 @@ class ArenaView(FormView):
         self.buttons,self.fields=[],{}
         self.button('BACK TO AI',1090,65,166,'back')
         if self.page=='select':
-            entry=self.selection()
-            self.button('MODEL: '+(entry['name']+' / run '+entry['run'][:8] if entry else 'No saved training runs'),80,180,960,'model')
-            self.button('CHECKPOINT: '+(str(entry['episode'])+' episodes' if entry else '--'),80,245,960,'checkpoint')
-            self.button('LOAD TRUSTED CHECKPOINT',80,445,400,'load',True)
+            self.button('MODEL LIBRARY / FAMILY → GENERATION → CHECKPOINT',80,245,960,'model',True)
+            self.buttons[-1].action='choose_model:arena'
             self.field('seed',710,447,330)
         elif self.arena:
             arena=self.arena
@@ -60,17 +59,37 @@ class ArenaView(FormView):
                 self.button(title,800+(index%2)*225,545+(index//2)*37,215,action,index==0)
 
     def load(self,path):
-        network,metadata=self.store.load_model(path)
+        from ai.model_library import ModelLibrary
+        library=ModelLibrary(self.store.root.parent);library.scan()
+        cp=library.find_checkpoint(path)
+        if not cp:
+            identifier=library.index_checkpoint(path);cp=library.checkpoint(identifier)
+        return self.load_library(library,cp['id'])
+
+    def load_library(self,library,identifier):
+        seed=int(self.text['seed'])
+        if not 0<=seed<2**63:raise ValueError('Arena seed must be an integer from 0 to 2^63-1')
+        cp=library.resolve(identifier)
+        lease=library.acquire(cp['generation_id'],'Arena',identifier)
+        try:network,metadata=library.load(identifier)
+        except BaseException:library.release(lease);raise
+        if self.model_library:self.model_library.release(self.lease)
+        self.model_library,self.lease=library,lease
         seed=int(self.text['seed'])
         if not 0<=seed<2**63:
             raise ValueError('Seed must be an integer from 0 to 2^63-1')
-        self.arena=Arena(network,TrainingConfig.from_dict(metadata['hyperparameters']),seed,
+        self.arena=Arena(network,TrainingConfig.from_dict(metadata['hyperparameters']) if metadata.get('hyperparameters') else TrainingConfig(),seed,
                          metadata['model_name'],metadata['episode'])
         self.selected_metadata=metadata
         self.displayed_seed=seed
         self.page='watch'
         self.status='Frozen greedy evaluation / no training or epsilon exploration'
         self.layout()
+
+    def unload(self):
+        self.pause()
+        if self.model_library:self.model_library.release(self.lease)
+        self.lease=None;self.arena=None;self.page='select';self.layout()
 
     def action(self,action):
         try:

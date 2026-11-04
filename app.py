@@ -81,6 +81,10 @@ class Application:
         self.training_view=None
         self.frontier_view=None
         self.arena_view=None
+        self.model_library=None
+        self.library_view=None
+        self.library_pins={}
+        self.pending_library_command=None
         self.rebuild_controls()
 
     def rebuild_controls(self):
@@ -92,6 +96,7 @@ class Application:
             from ui.components import button
             self.controls=[button('LEGACY TRAINING',350,280,580,'open_training',True),
                 button('FRONTIER TRAINING',350,355,580,'open_frontier'),button('BACK TO AI',500,460,280,'ai')]
+        elif self.screen=='model_library':self.controls=self.library_view.buttons
         elif self.screen in ('training','arena','frontier'):
             view=self.frontier_view if self.screen=='frontier' else self.training_view if self.screen=='training' else self.arena_view
             self.controls=view.buttons
@@ -128,7 +133,17 @@ class Application:
             self.game.snake.pending = None
         if action in ("pause", "over"):
             self.feedback.enter_overlay()
-        if action=='open_training_hub':
+        if action=='open_model_library':
+            self.open_library('arena')
+        elif action.startswith('choose_model:'):
+            self.open_library(action.split(':',1)[1])
+        elif action.startswith('library:'):
+            self.library_action(action.split(':',1)[1])
+        elif action in ('frontier:analysis:model_a','frontier:analysis:checkpoint_a','train:analysis:model_a','train:analysis:checkpoint_a'):
+            self.open_library('analysis_a')
+        elif action in ('frontier:analysis:model_b','frontier:analysis:checkpoint_b','train:analysis:model_b','train:analysis:checkpoint_b'):
+            self.open_library('analysis_b')
+        elif action=='open_training_hub':
             self.screen='training_hub'
         elif action.startswith('frontier:'):
             command=action.split(':',1)[1]
@@ -264,6 +279,116 @@ class Application:
             self.lab_view.layout()
         self.screen=destination
 
+    def ensure_library(self):
+        if self.model_library is None:
+            from ai.model_library import ModelLibrary
+            from core.config import ROOT
+            from services.userdata import user_data_dir
+            repository=ROOT if self.store.path.parent.resolve()==user_data_dir().resolve() and not getattr(sys,'frozen',False) else None
+            self.model_library=ModelLibrary(self.store.path.parent,repository)
+        return self.model_library
+
+    def open_library(self,target):
+        from ui.model_library_view import ModelLibraryView
+        if self.screen=='frontier' and self.frontier_view.worker:
+            snapshot=self.frontier_view.worker.latest()
+            if snapshot and snapshot.status=='Running':self.frontier_view.worker.command('pause')
+        if self.screen=='training' and self.training_view.worker:self.training_view.worker.command('pause')
+        if self.library_view is None:self.library_view=ModelLibraryView(self.ensure_library())
+        self.library_view.open(target,self.screen);self.screen='model_library'
+        self.rebuild_controls()
+
+    def _pin_library(self,key,checkpoint,operation):
+        library=self.ensure_library();cp=library.checkpoint(checkpoint)
+        token=library.acquire(cp['generation_id'],key,checkpoint)
+        try:operation()
+        except BaseException:library.release(token);raise
+        library.release(self.library_pins.pop(key,None));self.library_pins[key]=token
+
+    def unload_library_views(self):
+        for view in (self.frontier_view,self.training_view):
+            if view and view.worker:
+                snapshot=view.worker.latest()
+                if snapshot and snapshot.status in ('Running','Paused'):raise ValueError('Stop and save the training session before unloading it')
+        for view in (self.frontier_view,self.training_view):
+            if view:
+                if view.worker:view.worker.shutdown();view.worker=None
+                view.analysis.unload()
+        if self.arena_view:
+            self.arena_view.unload()
+        if self.lab_view:
+            self.lab_view.live.stop();self.lab_view.unload_source();self.lab_view.live.model_label='DETACHED COPY'
+        for token in self.library_pins.values():self.ensure_library().release(token)
+        self.library_pins.clear()
+
+    def library_action(self,command):
+        view=self.library_view;library=self.ensure_library()
+        try:
+            if command in ('new','configure','load','seed') and self.lab_view is None:
+                from ai.runtime import torch_available
+                if not torch_available():raise ValueError('Optional PyTorch is required for this operation')
+                self.pending_library_command=command;self.ai_destination='library_pending';self.open_neural()
+                self.rebuild_controls();return
+            if command=='back':self.screen=view.caller
+            elif command=='unload':self.unload_library_views();view.status='Idle views unloaded; active training is protected'
+            elif command in ('new','configure'):
+                from ai.model_library import FAMILIES
+                generation=library.create(view.family,view.text['description']) if command=='new' else view.generation
+                if not generation:raise ValueError('Select a created generation')
+                item=library.get(generation)
+                if command=='configure' and library.checkpoints(generation):raise ValueError('Choose a resumable checkpoint to continue this generation')
+                self.open_experience('frontier')
+                if self.frontier_view is None:raise ValueError('Wait for the optional neural runtime, then reopen the library')
+                frontier=self.frontier_view;frontier.source='new';frontier.pending_generation=generation
+                frontier.model_configuration=FAMILIES[item['family']]
+                from ai.model_registry import LINEUP
+                frontier.text['hidden']=','.join(map(str,LINEUP[frontier.model_configuration][3]));frontier.text['activation']='relu'
+                frontier.text['name']=item['description'];frontier.page='config';frontier.layout()
+            elif command=='none' and view.target=='analysis_b':
+                analysis=(self.frontier_view if view.caller=='frontier' else self.training_view).analysis
+                analysis.indices[1]=None;analysis.load_selected();analysis.layout();self.screen=view.caller
+            elif command=='load':
+                if not view.checkpoint:raise ValueError('Select a specific checkpoint')
+                from ai.runtime import torch_available
+                if not torch_available():raise ValueError('Optional PyTorch is required to load networks')
+                purpose='legacy_resume' if view.target=='legacy_resume' else 'resume' if view.target=='frontier_resume' else 'lab' if view.target=='lab' else 'inference'
+                cp=library.resolve(view.checkpoint,purpose);path=Path(cp['path'])
+                if view.target=='frontier_resume':
+                    self.open_experience('frontier');frontier=self.frontier_view
+                    frontier.source='library';frontier.library_checkpoint=cp['id'];frontier.pending_generation=cp['generation_id']
+                    frontier.text['episodes']=str(max(int(frontier.text['episodes']),cp['episode'] or 0));frontier.page='config';frontier.layout()
+                elif view.target=='legacy_resume':
+                    self.open_experience('training');self.training_view.start(path)
+                elif view.target=='legacy_seed':
+                    library.resolve(cp['id'],'lab')
+                    self.open_experience('training');self.training_view.source='library_model';self.training_view.library_checkpoint=cp['id']
+                    self.training_view.status='New Alpha generation will copy weights; optimizer and replay start fresh'
+                elif view.target.startswith('analysis_'):
+                    analysis=(self.frontier_view if view.caller=='frontier' else self.training_view).analysis
+                    slot=0 if view.target=='analysis_a' else 1
+                    analysis.select_library(cp['id'],slot);self.screen=view.caller
+                elif view.target=='lab':
+                    self.open_experience('neural')
+                    def load_lab():
+                        network,info=library.load(cp['id'],'lab');self.lab_view.load_library_network(network,info,library,cp['id'])
+                    load_lab()
+                else:
+                    self.open_experience('arena')
+                    self.arena_view.load_library(library,cp['id'])
+            elif command=='seed':
+                if not view.checkpoint:raise ValueError('Select a checkpoint')
+                cp=library.resolve(view.checkpoint)
+                if view.target=='legacy_resume':
+                    library.resolve(cp['id'],'lab');self.open_experience('training')
+                    self.training_view.source='library_model';self.training_view.library_checkpoint=cp['id']
+                else:
+                    self.open_experience('frontier');self.frontier_view.source='library_model'
+                    self.frontier_view.library_checkpoint=cp['id'];self.frontier_view.pending_generation=None
+                    self.frontier_view.page='config';self.frontier_view.layout()
+            else:view.action(command)
+        except (ValueError,OSError,RuntimeError) as error:view.status=str(error);self.screen='model_library'
+        view.layout();self.rebuild_controls()
+
     def open_neural(self):
         from ai.runtime import torch_available
         if self.lab_view is not None:
@@ -348,6 +473,9 @@ class Application:
                 (position[1] - view.y) * 720 / view.height)
 
     def handle_event(self, event):
+        if self.screen=='model_library':
+            if self.library_view.handle_event(event,self.mouse_position(getattr(event,'pos',pygame.mouse.get_pos()))):
+                self.controls=self.library_view.buttons;return
         if self.screen in ('training','arena','frontier'):
             view=self.frontier_view if self.screen=='frontier' else self.training_view if self.screen=='training' else self.arena_view
             position=self.mouse_position(getattr(event,'pos',pygame.mouse.get_pos()))
@@ -382,6 +510,7 @@ class Application:
             if event.key == pygame.K_ESCAPE:
                 if self.screen in ('training','arena','frontier'):
                     self.action('frontier:back' if self.screen=='frontier' else 'train:back' if self.screen=='training' else 'arena:back')
+                elif self.screen=='model_library':self.action('library:cancel' if self.library_view.confirm else 'library:back')
                 elif self.screen in ("neural", "neural_loading", "neural_unavailable"):
                     self.action("ai")
                 elif self.screen in ("game", "countdown"):
@@ -406,6 +535,11 @@ class Application:
                 self.action(action)
 
     def update(self, dt):
+        if self.screen=='model_library':
+            for view in (self.frontier_view,self.training_view):
+                if view:view.analysis.update(dt,False)
+            self.controls=self.library_view.buttons
+            return
         if self.screen in ('training','arena','frontier'):
             view=self.frontier_view if self.screen=='frontier' else self.training_view if self.screen=='training' else self.arena_view
             view.update(dt)
@@ -425,7 +559,11 @@ class Application:
                     from ui.neural_view import NeuralView
                     self.lab_view = NeuralView(result, self.store.path.parent / "models")
                     self.screen = "neural"
-                    if self.ai_destination!='neural':
+                    if self.ai_destination=='library_pending':
+                        command=self.pending_library_command;self.pending_library_command=None
+                        self.screen='model_library'
+                        if command:self.library_action(command)
+                    elif self.ai_destination!='neural':
                         self.open_experience(self.ai_destination)
                 except Exception as error:
                     logging.exception("Neural interface could not initialize")
@@ -508,6 +646,7 @@ class Application:
             menu.draw(self.canvas, self.screen == "ai", self.assets)
         elif self.screen == "neural":
             self.lab_view.draw(self.canvas)
+        elif self.screen=='model_library':self.library_view.draw(self.canvas)
         elif self.screen=='training_hub':
             from ui.components import backdrop
             backdrop(self.canvas,'SNAKE INFINITE / AI','TRAINING CENTER','Legacy tools or the Frontier headless workflow')
@@ -592,6 +731,11 @@ class Application:
             self.frontier_view.close()
         if self.training_view:
             self.training_view.close()
+        if self.arena_view:self.arena_view.unload()
+        if self.lab_view:self.lab_view.unload_source()
+        if self.model_library:
+            for token in self.library_pins.values():self.model_library.release(token)
+            self.library_pins.clear()
         self.finish_session()
         if self.video is not None:
             self.video.close()

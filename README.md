@@ -1,6 +1,6 @@
 # SNAKE INFINITE
 
-**v1.5.3 — Parallel Frontier Training**
+**v1.5.3b — Recovery Repairs & Model Library**
 
 A minimalist Python/Pygame arcade game with Classic, Arcade, five challenges,
 official startup branding, and local records. Built on the existing v1.0/v1.1
@@ -12,6 +12,41 @@ The AI section integrates **NEURAL LABORATORY — Build & inspect**,
 **TRAINING CENTER — Train & monitor**, and **ARENA — Watch & evaluate**.
 DQN training and frozen greedy evaluation use the existing headless Classic engine.
 PyTorch remains optional for ordinary arcade play.
+
+## Model Library
+
+Open **AI → MODEL LIBRARY** to browse **Alpha / Distance / CNN / oCNN →
+Generation → Checkpoint**. The same picker serves Frontier, supported Legacy
+training, Arena, Analysis/frozen evaluation, and the existing Alpha Laboratory.
+Frontier identifies the training interface, not a model family.
+
+Each independent experiment receives a persistent name such as **Snake DQN
+Distance — Gen 2**. Family counters are independent and never reused after
+deletion. Resuming a checkpoint retains its generation; seeding a new experiment
+creates another. Optional descriptions do not change the identity.
+
+The library indexes existing storage without moving or rewriting trained models.
+Select a checkpoint for its architecture, episode, steps and location; **DETAILS**
+shows available configuration and history/evaluation references. **OPEN FILES**
+opens the real folder. Inference exports are distinguished from full resumable
+checkpoints. Missing or ambiguous data is reported, never invented or substituted.
+
+**DELETE CHECKPOINT / DELETE GENERATION** opens a file preview. Confirmation moves
+owned files to application Trash; **TRASH / RESTORE** restores their identities
+and paths. Active training and loaded views block deletion. **UNLOAD IDLE VIEWS**
+releases idle selections. Shared historical databases and comparison records are
+retained. Original portable models remain visible under `models/`.
+
+The registry lives at `%LOCALAPPDATA%\SnakeInfinite\model_library\library.sqlite3`
+on Windows, separately from original model/history files. Preserve this metadata
+to retain IDs and generation counters. See [library design and usage](docs/model-library.md),
+[v1.5.3b release notes](docs/releases/v1.5.3b.md) and
+[validation results](docs/v153b-validation.md).
+
+Parallel failures now refuse checkpoints from incomplete batches and retain the
+previous verified recovery. Committed completions are drained exactly once before
+failure reporting; a local emergency journal covers SQLite history-flush failure.
+These repairs preserve the existing DQN algorithm, hyperparameters and roadmap.
 
 ## Frontier and Legacy Training
 
@@ -36,15 +71,16 @@ workflow. Frontier offers four model configurations using the same CPU DQN and
 learning defaults. Collection supports 1/2/4/8 environments, optional profiling,
 and CPU vectorized or Windows-spawn execution with one shared learner. No CUDA is required.
 
-| Configuration | Architecture / observation | Parameters |
+| Family (configuration) | Architecture / observation | Parameters |
 | --- | --- | ---: |
-| A — Legacy DQN | 11 → 16 → 8 → 3; original binary features | 355 |
-| B — Distance DQN | 19 → 64 → 32 → 3; original features + eight distances | 3,459 |
-| C — Binary CNN | Compact CNN; body/head/food planes + heading | 188,419 |
-| D — Ordered CNN | Same CNN; ordered body/head/food planes + heading | 188,419 |
+| Alpha (A) | 11 → 16 → 8 → 3; original binary features | 355 |
+| Distance (B) | 19 → 64 → 32 → 3; original features + eight distances | 3,459 |
+| CNN (C) | Compact CNN; body/head/food planes + heading | 188,419 |
+| oCNN (D) | Same CNN; ordered body/head/food planes + heading | 188,419 |
 
-Choose A/B/C/D in Frontier Configuration. Architecture, encoder, input shape and
-parameter count appear below the selector. Advanced DQN exposes B's two or three
+Choose Alpha/Distance/CNN/oCNN in the Model Library or Frontier Configuration.
+Architecture, encoder, input shape and parameter count appear below the selector.
+Advanced DQN exposes Distance's two or three
 hidden-layer widths (ReLU). Existing models restore their own architecture and
 encoder. The original Neural Laboratory and Legacy Training retain their existing
 11-input inspection and customization workflows. All four families work in Arena,

@@ -20,6 +20,7 @@ class Choice:
     model_id: str = ''
     model_name: str = ''
     episode: int | None = None
+    checkpoint_id: str | None = None
 
     @property
     def model_key(self):
@@ -30,10 +31,12 @@ class AnalysisRepository:
     def __init__(self,profile):
         self.profile=Path(profile)
         self.history=HistoryStore(self.profile/'history')
+        from ai.model_library import ModelLibrary
+        self.library=ModelLibrary(self.profile)
 
     def signature(self):
         """Cheap background invalidation for journals and newly published results."""
-        paths=[self.history.path,Path(str(self.history.path)+'-wal')]
+        paths=[self.history.path,Path(str(self.history.path)+'-wal'),self.library.path,Path(str(self.library.path)+'-wal')]
         for root in (*checkpoint_roots(self.profile/'checkpoints'),self.profile/'evaluations',self.profile/'frontier_index'):
             name=root.name
             if root.exists():
@@ -47,7 +50,7 @@ class AnalysisRepository:
             except FileNotFoundError:continue
         return tuple(sorted(result))
 
-    def choices(self):
+    def _raw_choices(self):
         result=[]
         checkpoints=[]
         for root in checkpoint_roots(self.profile/'checkpoints'):
@@ -88,7 +91,50 @@ class AnalysisRepository:
                 except (OSError,ValueError,KeyError,TypeError):continue
         return tuple(result)
 
+    def choices(self):
+        self.library.scan()
+        raw=self._raw_choices();result=[];known=set()
+        for choice in raw:
+            cp=self.library.find_checkpoint(choice.checkpoint or choice.source)
+            if cp:
+                generation=self.library.get(cp['generation_id'])
+                if cp['status'] in ('Deleted','Deleting') or generation['status'] in ('Deleted','Deleting'):continue
+                name=generation['name']
+                result.append(replace(choice,model_id=generation['id'],model_name=name,
+                    name=name+(' / EVAL '+choice.name.split(' / EVAL ')[-1] if choice.kind=='evaluation' else ' / ep '+str(choice.episode)),checkpoint_id=cp['id']))
+                if choice.kind=='checkpoint':known.add(cp['id'])
+            else:
+                # An unassociated journal is visible only as actual historical data.
+                if choice.kind=='journal':
+                    generation=self.library.generation_for_run(choice.model_key)
+                    if generation and generation['status'] in ('Deleted','Deleting'):continue
+                    result.append(replace(choice,model_id=generation['id'],model_name=generation['name']) if generation else choice)
+        for cp in self.library.checkpoints():
+            if cp['id'] in known or cp['status']!='Available':continue
+            generation=self.library.get(cp['generation_id']);path=Path(cp['path'])
+            kind='checkpoint' if path.is_dir() and (path/'training.json').is_file() else 'library_inference'
+            run=cp['data'].get('model_identifier',cp['data'].get('experiment_id',generation['id']))
+            result.append(Choice(cp['id'],generation['name']+' / ep '+str(cp['episode']),kind,path,run,path,
+                generation['id'],generation['name'],cp['episode'],cp['id']))
+        return tuple(result)
+
     def load(self,choice):
+        if choice.checkpoint_id:self.library.resolve(choice.checkpoint_id,verify=False)
+        if choice.kind=='library_inference':
+            cp=self.library.checkpoint(choice.checkpoint_id);config=parse_model_config(cp['data'])
+            return Dataset(choice.identifier,choice.model_name,(),architecture=config.sizes,checkpoint=str(choice.source),
+                checkpoint_episode=cp['episode'],model_identity=identity(config),configuration=cp['data'].get('hyperparameters'),
+                limitations=('No training history recorded for this inference artifact.',))
+        dataset=self._load(choice)
+        info=dataset.model_identity
+        configuration=dataset.configuration
+        if choice.checkpoint_id:
+            cp=self.library.checkpoint(choice.checkpoint_id)
+            info=info or identity(parse_model_config(cp['data']))
+            if dataset.kind!='evaluation':configuration={**(configuration or {}),'library_generation_id':cp['generation_id'],'library_checkpoint_id':cp['id']}
+        return replace(dataset,name=choice.model_name or dataset.name,model_identity=info,configuration=configuration)
+
+    def _load(self,choice):
         if choice.kind=='journal':
             dataset=self.history.load(choice.run)
             records=dataset.records
@@ -114,7 +160,7 @@ class AnalysisRepository:
             # Bound every history to this immutable snapshot. Enrich only with
             # actual journal records whose counters and overlapping values agree.
             for metadata in self.history.datasets():
-                if metadata['configuration'].get('checkpoint_run_id',metadata['identifier'])!=choice.model_key:continue
+                if metadata['configuration'].get('checkpoint_run_id',metadata['identifier'])!=choice.run:continue
                 journal=self.history.load(metadata['identifier'])
                 records=tuple(r for r in journal.records if r.episode<=choice.episode)
                 if not records or not dataset.records or journal.architecture!=dataset.architecture:continue

@@ -68,6 +68,7 @@ class CheckpointStore:
             raise ValueError('Model name must contain 1..40 characters')
         if not trainer.at_boundary:
             raise ValueError("Resume checkpoints require an episode boundary")
+        if hasattr(trainer,'validate_recovery'):trainer.validate_recovery()
         run_path = ModelStore(self.root).path(run)
         checkpoint = checkpoint or f'episode-{trainer.completed:07d}-{uuid4().hex[:8]}'
         models = ModelStore(run_path)
@@ -100,6 +101,9 @@ class CheckpointStore:
             torch_version=str(torch.__version__), sha256=hashlib.sha256(resume.read_bytes()).hexdigest(),
             truncation_convention='finite episodic return; no bootstrap for termination or truncation')
         metadata.update(identity(trainer.online.config))
+        if getattr(trainer,'generation_id',None):metadata['generation_id']=trainer.generation_id
+        if getattr(trainer,'generation_number',None):metadata['generation_number']=trainer.generation_number
+        if getattr(trainer,'training_interface',None):metadata['training_interface']=trainer.training_interface
         if hasattr(trainer,'execution'):metadata['parallel_execution']=trainer.execution.to_dict()
         temporary = folder/'training.json.tmp'
         temporary.write_text(json.dumps(metadata,indent=2,allow_nan=False),encoding='utf-8')

@@ -30,7 +30,7 @@ def test_mandatory_ai_menu_names_and_subtitles(app):
     app.action('ai')
     assert [(b.text,b.subtitle) for b in app.controls]==[
         ('NEURAL LABORATORY','Build & inspect'),('TRAINING CENTER','Train & monitor'),
-        ('ARENA','Watch & evaluate'),('BACK',None)]
+        ('ARENA','Watch & evaluate'),('MODEL LIBRARY','Families, generations & checkpoints'),('BACK',None)]
     app.draw(.016)
 
 
@@ -64,7 +64,11 @@ def test_training_configuration_worker_charts_arena_and_lab_integration(app):
     assert app.arena_view.arena.seed==12345
     click(app,'arena:select')
     app.draw(.016)
-    click(app,'arena:load')
+    click(app,'choose_model:arena')
+    cp=app.model_library.find_checkpoint(checkpoint)
+    app.action('library:generation:'+cp['generation_id'])
+    app.action('library:checkpoint:'+cp['id'])
+    click(app,'library:load')
     click(app,'arena:back')
     app.action('open_training')
     click(app,'train:lab')

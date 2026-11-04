@@ -113,9 +113,12 @@ def test_supervised_demo_and_persistence_through_ui(app):
     click(app, 'confirm')
     original = lab.outputs
     lab.edit_parameter(2, 0, 100)
-    click(app, 'load')
-    assert view.pending == ('load', 'my-network') and lab.outputs != original
-    click(app, 'confirm')
+    assert lab.outputs != original
+    app.action('choose_model:lab')
+    cp=app.model_library.find_checkpoint(view.store.path('my-network'))
+    app.action('library:generation:'+cp['generation_id'])
+    app.action('library:checkpoint:'+cp['id'])
+    app.action('library:load')
     assert lab.outputs == original and lab.demo_steps == 1
     app.draw(.016)
 

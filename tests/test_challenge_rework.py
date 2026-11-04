@@ -20,7 +20,7 @@ def mine_game(cell, *, expires_at=5.0):
 
 
 def test_version_and_unchanged_challenge_objectives():
-    assert VERSION == "v1.5.3" and SUBTITLE == "Parallel Frontier Training"
+    assert VERSION == "v1.5.3b" and SUBTITLE == "Recovery Repairs & Model Library"
     assert BY_ID["centurion"].rules.score_target == 70
     hunter = BY_ID["star_hunter"].rules
     assert hunter.star_target == 10 and hunter.star_interval == (10, 15)

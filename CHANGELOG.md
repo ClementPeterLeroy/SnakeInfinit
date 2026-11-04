@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.5.3b — Recovery Repairs & Model Library
+
+- Refuse unsafe partial-batch recovery checkpoints, validate resumable traces,
+  preserve the previous verified recovery and report recovery status truthfully.
+- Persist every committed completion exactly once on failure, with idempotent
+  history flushing and an Analysis-readable emergency journal for SQLite failures.
+- Add the shared Alpha / Distance / CNN / oCNN Model Library with immutable
+  generation/checkpoint IDs, independent persistent counters and optional descriptions.
+- Index legacy experiments conservatively without altering original checkpoints,
+  weights or history; preserve evidenced resume lineage and flag unresolved data.
+- Unify Frontier, supported Legacy, Arena, Analysis/evaluation and Alpha Laboratory
+  selection, distinguish inference from full continuation and protect loaded models.
+- Add previewed reversible checkpoint/generation deletion, shared-resource retention,
+  interrupted-operation recovery and restoration without overwrite.
+- Cover recovery fault injection, registry concurrency, migration, compatibility,
+  workflow integration and deletion safety. Preserve architectures, learning defaults
+  and the existing development roadmap.
+
 ## v1.5.3 — Parallel Frontier Training
 
 - Add 1/2/4/8 independent environments feeding one shared DQN learner and replay.

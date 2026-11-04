@@ -39,6 +39,7 @@ class ParallelTrainer(Trainer):
         self.completions=[]
         self.vector_steps=0
         self.at_boundary=True  # Quiescent vector boundary: all partial episodes are serializable.
+        self.recovery_safe=True
 
     @property
     def active_environments(self):return sum(slot['observation'] is not None for slot in self.slots)
@@ -67,9 +68,11 @@ class ParallelTrainer(Trainer):
         return [(index,actions[index]) for index in indices]
 
     def train_batch(self,max_transitions=None,optimize=True,completion_limit=None):
+        if not self.recovery_safe:raise RuntimeError('Interrupted batch cannot continue; resume a verified checkpoint')
         self.completions=[]
         remaining=self.config.episodes-self.completed
         if remaining<=0:return []
+        self.at_boundary=self.recovery_safe=False
         # Reserve at most the remaining episode slots: target cannot overshoot.
         active=[i for i,s in enumerate(self.slots) if s['observation'] is not None]
         for index,slot in enumerate(self.slots):
@@ -80,7 +83,9 @@ class ParallelTrainer(Trainer):
         indices=sorted(active)[:remaining]
         if completion_limit is not None:indices=indices[:max(0,completion_limit-self.completed)]
         if max_transitions is not None:indices=indices[:max_transitions]
-        if not indices:return []
+        if not indices:
+            self.at_boundary=self.recovery_safe=True
+            return []
         actions=self.choose_actions(indices)
         results=self.pool.step(actions)
         transitions=[result[0] for result in results]
@@ -100,15 +105,18 @@ class ParallelTrainer(Trainer):
             if self.total_steps%self.config.target_sync==0:self.target.load_state_dict(self.online.state_dict())
             self.epsilons.append(self.epsilon)
             if transition.done:
-                self.completed+=1;self.best=max(self.best,slot['score'])
+                completion=Completion(self.completed+1,index,slot['sequence'],slot['seed'],slot['score'],
+                    slot['length'],slot['reward'],transition.reason,self.total_steps,self.epsilon,slot['updates'],
+                    slot['loss_sum']/slot['updates'] if slot['updates'] else None,self.loss,self.gradient_norm)
                 self.scores.append(slot['score']);self.lengths.append(slot['length']);self.rewards.append(slot['reward'])
+                self.best=max(self.best,slot['score'])
                 self.last_reason=transition.reason
                 self.collisions+=int(transition.terminated and transition.reason!='board_completion')
                 self.stagnations+=int(transition.reason=='stagnation')
-                self.completions.append(Completion(self.completed,index,slot['sequence'],slot['seed'],slot['score'],
-                    slot['length'],slot['reward'],transition.reason,self.total_steps,self.epsilon,slot['updates'],
-                    slot['loss_sum']/slot['updates'] if slot['updates'] else None,self.loss,self.gradient_norm))
                 slot['observation']=None
+                self.completions.append(completion)
+                self.completed=completion.index
+        self.at_boundary=self.recovery_safe=True
         return transitions
 
     def train_step(self):return self.train_batch()
@@ -123,9 +131,24 @@ class ParallelTrainer(Trainer):
         return metrics
 
     def snapshot_state(self):
+        if not self.recovery_safe or not self.at_boundary:raise ValueError('Recovery unavailable: interrupted batch is unsafe')
         return dict(schema=1,execution=self.execution.to_dict(),vector_steps=self.vector_steps,
             slots=[{**{k:v for k,v in slot.items() if k not in ('rng','observation')},
                 'active':slot['observation'] is not None,'rng':slot['rng'].getstate()} for slot in self.slots])
+
+    def validate_recovery(self):
+        self.snapshot_state()
+        from ai.environment import Episode
+        for index,slot in enumerate(self.slots):
+            if slot['observation'] is None:continue
+            if slot['seed']!=episode_seed(self.config.seed,index,slot['sequence']) or slot['length']!=len(slot['actions']):raise ValueError('Invalid committed episode identity')
+            episode=Episode(self.config,encoder=self.environment.encoder)
+            observation=episode.reset(slot['seed'])
+            for action in slot['actions']:
+                transition=episode.step(action)
+                if transition.done:raise ValueError('Active episode trace is terminal')
+                observation=transition.next_observation
+            if (observation,episode.game.score,episode.total_reward)!=(slot['observation'],slot['score'],slot['reward']):raise ValueError('Committed episode state does not match trace')
 
     def restore_state(self,state):
         if not isinstance(state,dict) or state.get('schema')!=1 or len(state['slots'])!=len(self.slots):raise ValueError('Invalid parallel state')
