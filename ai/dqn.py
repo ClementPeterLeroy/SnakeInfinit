@@ -46,6 +46,7 @@ class Trainer:
         self.at_boundary = True
         self.completed = self.total_steps = self.apples = self.collisions = self.stagnations = self.best = 0
         self.loss = self.gradient_norm = None
+        self.optimizer_updates = 0
         self.elapsed = 0.
         self.cumulative_reward=0.
         self.scores, self.lengths, self.rewards = deque(maxlen=20000), deque(maxlen=20000), deque(maxlen=20000)
@@ -85,6 +86,7 @@ class Trainer:
         loss.backward()
         norm = torch.nn.utils.clip_grad_norm_(self.online.parameters(), self.config.gradient_clip, error_if_nonfinite=True)
         self.optimizer.step()
+        self.optimizer_updates += 1
         if any(not torch.isfinite(p).all() for p in self.online.parameters()):
             raise ValueError("Non-finite model parameters; training stopped")
         self.loss, self.gradient_norm = loss.item(), norm.item()

@@ -1,0 +1,84 @@
+{
+  "status": "Completed",
+  "message": "Final model saved: C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\models\\snake_dqn_distance19_ep010000_model_ca27dbe7.pt",
+  "profiling": {
+    "environment_step": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "state_encoding": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "action_selection": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "neural_inference": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "replay_sampling": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "forward_backward": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "optimizer_update": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "metrics_aggregation": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "checkpoint_serialization": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "ui_synchronization": {
+      "seconds": 0.0,
+      "calls": 0
+    }
+  },
+  "metrics": {
+    "episode": 10000,
+    "completed": 10000,
+    "score": 20,
+    "best": 67,
+    "average": 19.73,
+    "epsilon": 0.050000000000000044,
+    "loss": 0.1343117505311966,
+    "steps": 3087506,
+    "apples": 156020,
+    "collisions": 9998,
+    "stagnations": 2,
+    "elapsed": 17748.25555360003,
+    "gradient_norm": 1.5629688501358032,
+    "last_reason": "self_collision",
+    "average_length": 308.7506,
+    "reward_total": 1430995.1399766242,
+    "parameter_count": 3459,
+    "collision_frequency": 0.9998,
+    "stagnation_frequency": 0.0002,
+    "apples_per_step": 0.05053269532107792,
+    "target": 10000,
+    "progress": 100.0,
+    "rolling_mean": 19.73,
+    "rolling_median": 19.0,
+    "mean_length": 380.09,
+    "median_length": 352.5,
+    "steps_per_second": 173.96109666528523,
+    "episodes_per_second": 0.563435655397221,
+    "optimizer_updates": 3087443,
+    "optimizer_updates_per_second": 173.95754702065622,
+    "eta": 0.0,
+    "cpu_percent": null,
+    "ram_bytes": 191209472,
+    "peak_ram_bytes": 528121856,
+    "inferences_per_second": null
+  },
+  "optimizer_updates": 3087443
+}

@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.5.3 — Parallel Frontier Training
+
+- Add 1/2/4/8 independent environments feeding one shared DQN learner and replay.
+- Support ordered vectorized collection and Windows-spawn workers with batched
+  MLP/CNN inference, independent exploration and deterministic seed derivation.
+- Expose reference per-transition and explicit per-vector-step optimizer policies;
+  preserve global transition-based epsilon and target synchronization schedules.
+- Add exact episode accounting, environment/local sequence journal and CSV fields,
+  partial-episode checkpoint restoration, process cleanup and failure recovery.
+- Add environment/strategy/update controls, dynamic dashboard metrics, readable
+  durations, smoothed completion-rate ETA and actual optimizer counters.
+- Preserve historical checkpoints, architectures, encoders, rewards, Legacy and
+  frozen Arena/Analysis behavior; add fixed-step/fixed-update CPU benchmark tools.
+- Document measured simulation/training tradeoffs, 160 benchmark trials, validation
+  and the v1.5.4 optimization priorities. No mandatory CUDA or learning-objective change.
+
 ## v1.5.2 — Spatial Intelligence Foundations
 
 - Add separate architecture and observation-encoder registries with validated, versioned identities.

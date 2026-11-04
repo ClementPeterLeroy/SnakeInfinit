@@ -25,6 +25,9 @@ Frontier also publishes shareable model pairs directly under
 `experiments/frontier/<experiment-id>/models/`, with descriptive prefixes for
 Legacy11, Distance19, Binary CNN and Ordered CNN. Those `.pt` and matching `.json`
 files include episode, training-step count, experiment and model identities.
+v1.5.3 model metadata also records collection configuration, actual optimizer
+updates, active training duration and session wall duration. Frozen inference
+uses the saved network/encoder independently of training environment count.
 Use **OPEN EXPERIMENT FILES** to find them. See
 [artifact formats](../docs/spatial-architecture.md#artifacts-and-compatibility).
 

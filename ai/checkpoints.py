@@ -88,16 +88,19 @@ class CheckpointStore:
             counters={k:getattr(trainer,k) for k in ('completed','total_steps','apples','collisions','stagnations','best')},
             history={k:list(getattr(trainer,k)) for k in ('scores','lengths','rewards','losses','epsilons')},
             loss=trainer.loss, gradient_norm=trainer.gradient_norm, elapsed=trainer.elapsed,
-            cumulative_reward=trainer.cumulative_reward,last_reason=trainer.last_reason)
+            cumulative_reward=trainer.cumulative_reward,last_reason=trainer.last_reason,
+            optimizer_updates=trainer.optimizer_updates)
+        if hasattr(trainer,'snapshot_state'):state['parallel']=trainer.snapshot_state()
         resume = folder/'training.pt'
         torch.save(state,resume)
         metadata = dict(format_version=2 if trainer.codec else 1, kind='resumable-boundary', model_identifier=run, model_name=name,
             architecture=trainer.online.config.to_dict(), episode=trainer.completed, environment_steps=trainer.total_steps,
-            epsilon=trainer.epsilon, hyperparameters=trainer.config.to_dict(),
+            epsilon=trainer.epsilon, optimizer_updates=trainer.optimizer_updates,hyperparameters=trainer.config.to_dict(),
             metrics=trainer.metrics(), created_utc=datetime.now(timezone.utc).isoformat(),
             torch_version=str(torch.__version__), sha256=hashlib.sha256(resume.read_bytes()).hexdigest(),
             truncation_convention='finite episodic return; no bootstrap for termination or truncation')
         metadata.update(identity(trainer.online.config))
+        if hasattr(trainer,'execution'):metadata['parallel_execution']=trainer.execution.to_dict()
         temporary = folder/'training.json.tmp'
         temporary.write_text(json.dumps(metadata,indent=2,allow_nan=False),encoding='utf-8')
         temporary.replace(folder/'training.json')  # Library visibility commits last.
@@ -227,6 +230,19 @@ class CheckpointStore:
                         raise ValueError("Invalid Adam tensor")
             if metadata['episode'] != trainer.completed or metadata['environment_steps'] != trainer.total_steps or abs(metadata['epsilon']-trainer.epsilon)>1e-12:
                 raise ValueError("Inconsistent checkpoint metadata")
+            updates=state.get('optimizer_updates',max(0,trainer.total_steps-trainer.config.batch_size+1))
+            if type(updates) is not int or not 0<=updates<=trainer.total_steps:raise ValueError('Invalid optimizer update counter')
+            if metadata.get('optimizer_updates',updates)!=updates:raise ValueError('Optimizer update metadata mismatch')
+            trainer.optimizer_updates=updates
+            if 'parallel' in state or 'parallel_execution' in metadata:
+                from ai.frontier_config import FrontierConfig
+                from ai.parallel import ParallelTrainer
+                execution=FrontierConfig.from_dict(metadata['parallel_execution'])
+                if execution.to_dict()!=FrontierConfig.from_dict(state['parallel']['execution']).to_dict():raise ValueError('Parallel checkpoint policy mismatch')
+                parallel=ParallelTrainer(trainer.config,execution,learner=trainer)
+                try:parallel.restore_state(state['parallel'])
+                except BaseException:parallel.close();raise
+                trainer=parallel
             return trainer, metadata
         except (OSError,RuntimeError,EOFError,TypeError,KeyError,IndexError,pickle.UnpicklingError,zipfile.BadZipFile) as error:
             raise ValueError('Cannot resume checkpoint: '+str(error)) from error

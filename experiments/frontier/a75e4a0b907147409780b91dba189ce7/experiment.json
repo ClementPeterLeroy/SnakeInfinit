@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "application_version": "v1.5.3",
+  "experiment_id": "a75e4a0b907147409780b91dba189ce7",
+  "name": "Snake DQN Frontier CNN",
+  "encoder_id": "snake-spatial-binary-v1",
+  "input_count": 1879,
+  "training": {
+    "episodes": 10000,
+    "learning_rate": 0.001,
+    "gamma": 0.99,
+    "replay_capacity": 100000,
+    "batch_size": 64,
+    "epsilon_start": 1.0,
+    "epsilon_min": 0.05,
+    "epsilon_decay_steps": 100000,
+    "target_sync": 1000,
+    "checkpoint_interval": 500,
+    "seed": 0,
+    "food_reward": 10.0,
+    "collision_reward": -10.0,
+    "step_reward": -0.01,
+    "stagnation_reward": -5.0,
+    "stagnation_factor": 100,
+    "episode_cap": 10000,
+    "gradient_clip": 10.0
+  },
+  "execution": {
+    "refresh_episodes": 100,
+    "headless": true,
+    "recovery_interval": 1000,
+    "recovery_slots": 2,
+    "milestones": [
+      1000,
+      3000,
+      5000,
+      10000
+    ],
+    "profiling": false,
+    "environments": 2,
+    "strategy": "auto",
+    "update_policy": "transition"
+  },
+  "training_seed": 0,
+  "evaluation_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24
+  ],
+  "environment_step_budget": 100000000,
+  "resumed_from": null,
+  "created_utc": "2026-11-02T15:50:59.679060+00:00",
+  "history_root": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\a75e4a0b907147409780b91dba189ce7\\history",
+  "checkpoint_root": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\a75e4a0b907147409780b91dba189ce7\\checkpoints",
+  "resume_strategy": "Exact quiescent vector boundary; partial episodes reconstructed from seed and action trace",
+  "architecture": {
+    "configuration_id": "C",
+    "hidden_sizes": [],
+    "seed": 0,
+    "architecture_id": "cnn_spatial_compact",
+    "encoder_id": "snake-spatial-binary-v1",
+    "schema_version": 1
+  },
+  "model_configuration_id": "C",
+  "architecture_id": "cnn_spatial_compact",
+  "architecture_name": "Compact spatial CNN",
+  "encoder_name": "Binary body occupancy",
+  "network_family": "CNN",
+  "architecture_schema_version": 1,
+  "encoder_schema_version": 1,
+  "architecture_parameters": {
+    "channels": [
+      3,
+      32,
+      64,
+      64
+    ],
+    "kernel_size": 3,
+    "padding": 1,
+    "strides": [
+      2,
+      2,
+      2
+    ],
+    "flatten": 1024,
+    "heading": 4,
+    "dense_hidden": 128,
+    "activation": "relu",
+    "outputs": 3
+  },
+  "actions": [
+    "Straight",
+    "Turn left",
+    "Turn right"
+  ],
+  "encoder_configuration": {
+    "board_width": 25,
+    "board_height": 25,
+    "normalization": "Body excluding head = 1; empty = 0"
+  },
+  "input_shape": {
+    "spatial": [
+      3,
+      25,
+      25
+    ],
+    "heading": [
+      4
+    ]
+  },
+  "parameter_count": 188419,
+  "resolved_strategy": "vectorized",
+  "seed_derivation": "sha256:snake-frontier-seeds-v1/master/environment/local-sequence",
+  "scheduling": "synchronous, ascending environment ID; completions in transition order",
+  "target_sync_basis": "global environment transitions",
+  "epsilon_basis": "global environment transitions",
+  "python_version": "3.13.12",
+  "torch_version": "2.15.0+cpu"
+}

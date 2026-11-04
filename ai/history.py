@@ -1,5 +1,5 @@
 """Append-only SQLite episode/optimizer journals, separate from model weights."""
-from dataclasses import asdict
+from dataclasses import asdict,replace
 from contextlib import closing
 import json
 import math
@@ -8,7 +8,7 @@ import sqlite3
 from ai.analysis_stats import Dataset, EpisodeRecord
 
 SCHEMA=1
-FIELDS=tuple(EpisodeRecord.__dataclass_fields__)
+FIELDS=tuple(EpisodeRecord.__dataclass_fields__)[:11]
 
 
 class HistoryStore:
@@ -98,6 +98,9 @@ class HistoryStore:
             raise ValueError('Training history not found')
         with closing(sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
             records=tuple(EpisodeRecord(*row) for row in db.execute('SELECT * FROM episodes WHERE run_id=? ORDER BY episode',(run,)))
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='episode_environments'").fetchone():
+                environments={row[0]:row[1:] for row in db.execute('SELECT episode,environment_id,local_sequence FROM episode_environments WHERE run_id=?',(run,))}
+                records=tuple(replace(r,environment_id=environments[r.episode][0],local_sequence=environments[r.episode][1]) if r.episode in environments else r for r in records)
         return Dataset(metadata['identifier'],metadata['name'],records,architecture=metadata['architecture'],
                        status=metadata['status'],configuration=metadata['configuration'],model_identity=metadata['configuration'].get('model_identity'))
 

@@ -1,0 +1,78 @@
+{
+  "format_version": 2,
+  "application_version": "v1.5.2",
+  "created_utc": "2026-11-02T13:52:54.043698+00:00",
+  "architecture": {
+    "configuration_id": "B",
+    "hidden_sizes": [
+      64,
+      32
+    ],
+    "seed": 0,
+    "architecture_id": "mlp_distance19",
+    "encoder_id": "snake-distance19-v1",
+    "schema_version": 1
+  },
+  "features": [
+    "Danger straight",
+    "Danger right",
+    "Danger left",
+    "Moving up",
+    "Moving down",
+    "Moving left",
+    "Moving right",
+    "Food above",
+    "Food below",
+    "Food left",
+    "Food right",
+    "North",
+    "Northeast",
+    "East",
+    "Southeast",
+    "South",
+    "Southwest",
+    "West",
+    "Northwest"
+  ],
+  "actions": [
+    "Straight",
+    "Turn left",
+    "Turn right"
+  ],
+  "weights_file": "snake_dqn_distance19_ep010000_model.pt",
+  "sha256": "3359b69edefd27c071d3047f360060527c48f65a97ac91132181d57964c4d2ae",
+  "manual_edits": [],
+  "supervised_demo_steps": 0,
+  "reinforcement_learning": true,
+  "model_configuration_id": "B",
+  "architecture_id": "mlp_distance19",
+  "encoder_id": "snake-distance19-v1",
+  "architecture_name": "Distance-aware MLP",
+  "encoder_name": "Eight-direction distance sensing",
+  "network_family": "MLP",
+  "architecture_schema_version": 1,
+  "encoder_schema_version": 1,
+  "architecture_parameters": {
+    "input_features": 19,
+    "hidden_sizes": [
+      64,
+      32
+    ],
+    "activation": "relu",
+    "outputs": 3
+  },
+  "encoder_configuration": {
+    "board_width": 25,
+    "board_height": 25,
+    "normalization": "Consecutive free cells / 24; static body including tail; food is not an obstacle"
+  },
+  "input_shape": [
+    19
+  ],
+  "parameter_count": 3459,
+  "experiment_id": "6482b0b4eb864437a2fd41be6d5f0b94",
+  "model_name": "Snake DQN Frontier Distance",
+  "observation_encoder": "snake-distance19-v1",
+  "episode": 10000,
+  "environment_steps": 3087506
+}

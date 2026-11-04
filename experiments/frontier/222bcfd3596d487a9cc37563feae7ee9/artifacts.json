@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "artifacts": [
+    {
+      "kind": "recovery",
+      "episode": 224,
+      "path": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\222bcfd3596d487a9cc37563feae7ee9\\checkpoints\\222bcfd3596d487a9cc37563feae7ee9\\recovery-0000224-5a24af81",
+      "model": null
+    }
+  ]
+}

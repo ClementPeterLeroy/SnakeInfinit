@@ -1,0 +1,94 @@
+{
+  "status": "Stopped",
+  "message": "Worker closed at a safe step; last message: In-memory state retained, including the current episode",
+  "profiling": {
+    "environment_step": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "state_encoding": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "action_selection": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "neural_inference": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "replay_sampling": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "forward_backward": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "optimizer_update": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "metrics_aggregation": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "checkpoint_serialization": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "ui_synchronization": {
+      "seconds": 0.0,
+      "calls": 0
+    }
+  },
+  "metrics": {
+    "episode": 1,
+    "completed": 1,
+    "score": 1,
+    "best": 0,
+    "average": 0.0,
+    "epsilon": 0.996656,
+    "loss": 0.00038593687349930406,
+    "steps": 352,
+    "apples": 1,
+    "collisions": 1,
+    "stagnations": 0,
+    "elapsed": 7.070995199959725,
+    "gradient_norm": 0.06374518573284149,
+    "last_reason": "wall_collision",
+    "average_length": 23.0,
+    "reward_total": -3.4999999999999645,
+    "parameter_count": 188419,
+    "collision_frequency": 1.0,
+    "stagnation_frequency": 0.0,
+    "apples_per_step": 0.002840909090909091,
+    "environments": 8,
+    "active_environments": 8,
+    "strategy": "vectorized",
+    "update_policy": "transition",
+    "optimizer_updates": 289,
+    "vector_steps": 44,
+    "worker_health": "Closed",
+    "updates_per_transition": 0.8210227272727273,
+    "target": 10000,
+    "progress": 0.01,
+    "rolling_mean": 0.0,
+    "rolling_median": 0,
+    "mean_length": 23.0,
+    "median_length": 23,
+    "steps_per_second": 49.7808285885988,
+    "episodes_per_second": 0.1414228084903375,
+    "optimizer_updates_per_second": 40.87119165370754,
+    "session_wall_seconds": 42.58669880009256,
+    "eta": null,
+    "partial_episode_recovery": true,
+    "cpu_percent": null,
+    "ram_bytes": 429404160,
+    "peak_ram_bytes": 446369792,
+    "inferences_per_second": null
+  },
+  "optimizer_updates": 289,
+  "wall_seconds": 42.59404350002296
+}

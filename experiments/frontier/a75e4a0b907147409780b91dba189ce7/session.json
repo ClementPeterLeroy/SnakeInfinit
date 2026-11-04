@@ -1,0 +1,94 @@
+{
+  "status": "Stopped",
+  "message": "Worker closed at a safe step; last message: In-memory state retained, including the current episode",
+  "profiling": {
+    "environment_step": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "state_encoding": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "action_selection": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "neural_inference": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "replay_sampling": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "forward_backward": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "optimizer_update": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "metrics_aggregation": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "checkpoint_serialization": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "ui_synchronization": {
+      "seconds": 0.0,
+      "calls": 0
+    }
+  },
+  "metrics": {
+    "episode": 2843,
+    "completed": 2843,
+    "score": 1,
+    "best": 2,
+    "average": 0.25,
+    "epsilon": 0.050000000000000044,
+    "loss": 0.055695511400699615,
+    "steps": 306175,
+    "apples": 417,
+    "collisions": 2596,
+    "stagnations": 247,
+    "elapsed": 7916.10610059998,
+    "gradient_norm": 1.1923447847366333,
+    "last_reason": "wall_collision",
+    "average_length": 107.5761519521632,
+    "reward_total": -26054.149999758305,
+    "parameter_count": 188419,
+    "collision_frequency": 0.913119943721421,
+    "stagnation_frequency": 0.08688005627857896,
+    "apples_per_step": 0.0013619661958030537,
+    "environments": 2,
+    "active_environments": 2,
+    "strategy": "vectorized",
+    "update_policy": "transition",
+    "optimizer_updates": 306112,
+    "vector_steps": 153112,
+    "worker_health": "Closed",
+    "updates_per_transition": 0.9997942353229362,
+    "target": 10000,
+    "progress": 28.43,
+    "rolling_mean": 0.25,
+    "rolling_median": 0.0,
+    "mean_length": 142.48,
+    "median_length": 113.0,
+    "steps_per_second": 38.67747553014661,
+    "episodes_per_second": 0.3591412196691657,
+    "optimizer_updates_per_second": 38.669517071884506,
+    "session_wall_seconds": 7931.311220500036,
+    "eta": 8007.9963282098115,
+    "partial_episode_recovery": true,
+    "cpu_percent": null,
+    "ram_bytes": 366006272,
+    "peak_ram_bytes": 446369792,
+    "inferences_per_second": null
+  },
+  "optimizer_updates": 306112,
+  "wall_seconds": 7931.33652589994
+}

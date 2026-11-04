@@ -18,6 +18,8 @@ class EpisodeRecord:
     elapsed: float | None = None
     apples: int | None = None
     seed: int | None = None
+    environment_id: int | None = None
+    local_sequence: int | None = None
 
 
 @dataclass(frozen=True)

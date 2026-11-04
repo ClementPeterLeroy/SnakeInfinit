@@ -103,6 +103,8 @@ class TrainingWorker:
             # Tiny dense CPU models are faster without a large intra-op thread pool.
             torch.set_num_threads(1)
             if resume:
+                if self.store.metadata(resume).get('parallel_execution'):
+                    raise ValueError('Parallel checkpoints resume in Frontier Training; use Frontier to retain collection state')
                 trainer,metadata=self.store.resume(resume)
                 run,name=metadata['model_identifier'],metadata['model_name']
                 if episode_target is not None:

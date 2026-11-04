@@ -48,6 +48,54 @@
       "episode": 4000,
       "path": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\checkpoints\\6482b0b4eb864437a2fd41be6d5f0b94\\recovery-0004000-7542792f",
       "model": null
+    },
+    {
+      "kind": "model",
+      "episode": 5000,
+      "path": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\models\\snake_dqn_distance19_ep005000_model.pt",
+      "library": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\checkpoints\\6482b0b4eb864437a2fd41be6d5f0b94\\episode-0005000-c029ed03"
+    },
+    {
+      "kind": "recovery",
+      "episode": 5000,
+      "path": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\checkpoints\\6482b0b4eb864437a2fd41be6d5f0b94\\recovery-0005000-8f82818b",
+      "model": null
+    },
+    {
+      "kind": "recovery",
+      "episode": 6000,
+      "path": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\checkpoints\\6482b0b4eb864437a2fd41be6d5f0b94\\recovery-0006000-7476ac29",
+      "model": null
+    },
+    {
+      "kind": "recovery",
+      "episode": 7000,
+      "path": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\checkpoints\\6482b0b4eb864437a2fd41be6d5f0b94\\recovery-0007000-2c3c19d7",
+      "model": null
+    },
+    {
+      "kind": "recovery",
+      "episode": 8000,
+      "path": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\checkpoints\\6482b0b4eb864437a2fd41be6d5f0b94\\recovery-0008000-e36d9281",
+      "model": null
+    },
+    {
+      "kind": "recovery",
+      "episode": 9000,
+      "path": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\checkpoints\\6482b0b4eb864437a2fd41be6d5f0b94\\recovery-0009000-2cb85583",
+      "model": null
+    },
+    {
+      "kind": "final",
+      "episode": 10000,
+      "path": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\checkpoints\\6482b0b4eb864437a2fd41be6d5f0b94\\final-0010000-91ff1ef8",
+      "model": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\models\\snake_dqn_distance19_ep010000_model.pt"
+    },
+    {
+      "kind": "final",
+      "episode": 10000,
+      "path": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\checkpoints\\6482b0b4eb864437a2fd41be6d5f0b94\\final-0010000-b75398b3",
+      "model": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\6482b0b4eb864437a2fd41be6d5f0b94\\models\\snake_dqn_distance19_ep010000_model_ca27dbe7.pt"
     }
   ]
 }

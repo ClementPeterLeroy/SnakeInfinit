@@ -80,11 +80,21 @@ differences cannot be attributed solely to encoding. Repeated seeds and matched
 budgets are necessary before ranking models. The short engineering pilots validate
 execution and persistence; they do not establish learned-policy superiority.
 
+## Parallel Frontier infrastructure
+
+v1.5.3 supports ordered vectorized or Windows-spawn collection with 1/2/4/8
+environments, one learner, batched inference and explicit update-to-data policies.
+See [parallel training](parallel-training.md) and
+[measured validation](parallel-validation.md). Frozen historical references now
+also include the supplied 10,000-episode Distance model result: mean **43.822**,
+median **44** over 500 frozen games. These supplied results are not reevaluations
+performed by this infrastructure patch.
+
 ## Roadmap
 
 | Release | Research scope |
 | --- | --- |
-| v1.5.3 — Parallel Frontier Training | Multiple simultaneous environments, vectorized execution where appropriate, batched inference, shared replay, CPU scaling benchmarks |
+| v1.5.3 — Parallel Frontier Training (implemented) | Multiple simultaneous environments, vectorized execution where appropriate, batched inference, shared replay, CPU scaling benchmarks |
 | v1.5.4 — CUDA & Frontier Optimization | GPU acceleration, CPU/GPU benchmarking, justified automatic device selection, profiling and optimization |
 | v1.5.5 — Benchmark Laboratory | Standardized fixed seeds, optional epsilon-controlled evaluation, per-seed results, comparisons, paired statistics, selected-seed Arena replays and CSV |
 | v1.6.x — Neural Intelligence Research | Further encodings, reachable-space awareness, CNN depth/width, temporal/recurrent networks, survival learning, reward design, Double/Dueling DQN investigations |

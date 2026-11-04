@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import time
 from uuid import uuid4
 import torch
 from ai.checkpoints import CheckpointStore,validated_weights
@@ -42,6 +43,7 @@ class FrontierStore:
         self.lock=self.root/'.writer.lock'
         self.fd=os.open(self.lock,os.O_CREAT|os.O_EXCL|os.O_WRONLY)
         self.name=name
+        self.started=time.perf_counter()
         self.checkpoints=CheckpointStore(self.root/'checkpoints')
         self.recoveries=[]
         self.artifacts=[]
@@ -63,7 +65,10 @@ class FrontierStore:
         info=identity(trainer.online.config)
         return dict(experiment_id=self.identifier,observation_encoder=info['encoder_id'],
             history_root=str(self.root/'history'),history_run=self.identifier,
-            architecture=trainer.online.config.to_dict(),resume_strategy=self.metadata['resume_strategy'],**info)
+            architecture=trainer.online.config.to_dict(),resume_strategy=self.metadata['resume_strategy'],
+            collection_configuration=self.metadata['execution'],optimizer_updates=trainer.optimizer_updates,
+            training_elapsed_seconds=trainer.elapsed,session_wall_seconds=time.perf_counter()-self.started,
+            target_sync_basis='global environment transitions',epsilon_basis='global environment transitions',**info)
 
     def snapshot(self,trainer):
         """Light model-only snapshot, plus compatible Arena/Analysis library metadata."""
@@ -95,7 +100,12 @@ class FrontierStore:
             stream.write((folder/metadata['weights_file']).read_bytes());stream.flush();os.fsync(stream.fileno())
         atomic_json(path.with_suffix('.json'),{**metadata,'experiment_id':self.identifier,'model_name':self.name,
             'observation_encoder':metadata.get('encoder_id',BASELINE_ENCODER),'episode':episode,
-            'environment_steps':checkpoint_metadata['environment_steps'],'weights_file':path.name})
+            'environment_steps':checkpoint_metadata['environment_steps'],
+            'optimizer_updates':checkpoint_metadata.get('optimizer_updates'),
+            'training_elapsed_seconds':checkpoint_metadata.get('training_elapsed_seconds'),
+            'session_wall_seconds':checkpoint_metadata.get('session_wall_seconds'),
+            'collection_configuration':checkpoint_metadata.get('collection_configuration',self.metadata['execution']),
+            'weights_file':path.name})
         load_published_model(path)  # Verify checksum, shapes and actual reload before reporting success.
         return path
 

@@ -36,7 +36,8 @@ class Profiler:
     def attach(self,trainer):
         if not self.enabled:return
         choosing=False
-        original_choose=trainer.choose_action
+        choose_method='choose_actions' if hasattr(trainer,'choose_actions') else 'choose_action'
+        original_choose=getattr(trainer,choose_method)
         original_forward=trainer.online.forward
         def forward(*args,**kwargs):
             if choosing:
@@ -49,7 +50,14 @@ class Profiler:
                 with self.measure('action_selection'):return original_choose(*args,**kwargs)
             finally:choosing=False
         trainer.online.forward=forward
-        trainer.choose_action=choose
+        setattr(trainer,choose_method,choose)
+        if hasattr(trainer,'pool'):
+            def attach_pool():
+                # Local encoding can be timed independently; IPC includes child encoding.
+                for episode in trainer.pool.episodes:self.wrap(episode,'observation','state_encoding')
+                self.wrap(trainer.pool,'step','environment_step')
+            trainer._profile_pool=attach_pool
+            attach_pool()
         for instance,method,name in ((trainer.environment,'observation','state_encoding'),
             (trainer.environment,'step','environment_step'),
             (trainer.replay,'sample','replay_sampling'),(trainer,'optimize','forward_backward'),

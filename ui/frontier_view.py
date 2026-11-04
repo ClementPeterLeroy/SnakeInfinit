@@ -19,6 +19,7 @@ from ui.analysis_view import AnalysisView
 from ui.analysis_chart import AnalysisChart
 from ui.components import BG,PANEL,GREEN,TEXT,MUTED,label
 from ai.model_registry import model_spec,LINEUP,identity,parse_model_config
+from services.training_time import duration
 
 
 class FrontierView(FormView):
@@ -39,12 +40,15 @@ class FrontierView(FormView):
         self.refresh=100
         self.headless=True
         self.profiling=False
+        self.environments=1
+        self.strategy='auto'
+        self.update_policy='transition'
         self.confirm=None
         self.library=[]
         self.library_at=0.
         self.text={key:str(value) for key,value in TrainingConfig().to_dict().items()}
         self.text.update(name='Snake DQN Frontier',hidden='16,8',activation='relu',recovery_interval='1000',recovery_slots='2',output=str(output))
-        self.status='CPU / 1 environment. New experiments never overwrite existing runs.'
+        self.status='Choose collector count and policy. New experiments never overwrite existing runs.'
         self.analysis=AnalysisView(profile)
         self.analysis.prefix='frontier:analysis:'
         self.cache=None
@@ -64,7 +68,8 @@ class FrontierView(FormView):
             if self.text['activation']!='relu':raise ValueError('Registered distance/CNN architectures use ReLU')
             architecture=model_spec(self.model_configuration,config.seed,hidden)
         else:architecture=NetworkConfig(tuple(int(v.strip()) for v in self.text['hidden'].split(',') if v.strip()) or (16,8),self.text['activation'],config.seed)
-        execution=FrontierConfig(self.refresh,self.headless,int(self.text['recovery_interval']),int(self.text['recovery_slots']),profiling=self.profiling)
+        execution=FrontierConfig(self.refresh,self.headless,int(self.text['recovery_interval']),int(self.text['recovery_slots']),
+            profiling=self.profiling,environments=self.environments,strategy=self.strategy,update_policy=self.update_policy)
         if not 1<=len(self.text['name'].strip())<=40:raise ValueError('Model name must contain 1..40 characters')
         if not self.text['output'].strip():raise ValueError('Choose an experiment output directory')
         return config,architecture,execution
@@ -111,17 +116,21 @@ class FrontierView(FormView):
                 self.button(f'DASHBOARD EVERY {self.refresh} EPISODES',24,350,580,'refresh')
                 self.button('HEADLESS '+('ON' if self.headless else 'PACED (9 steps/s)'),650,350,580,'headless')
                 self.button('PROFILING '+('ON' if self.profiling else 'OFF'),650,402,580,'profiling')
+                self.button('PARALLEL ENVIRONMENTS: '+str(self.environments),24,402,280,'environments')
+                self.button('STRATEGY: '+self.strategy.upper(),314,402,290,'strategy')
+                self.button('UPDATES: 1 PER '+('TRANSITION (REFERENCE)' if self.update_policy=='transition' else 'VECTOR STEP (FEWER UPDATES)'),24,510,600,'update_policy')
                 entries=self.entries()
                 if self.source=='resume':
                     entry=entries[self.selected%len(entries)] if entries else None
-                    self.button('CHECKPOINT: '+(entry['name']+' / '+str(entry['episode'])+' ep' if entry else 'None available'),24,510,1206,'select')
+                    self.button('CHECKPOINT: '+(entry['name']+' / '+str(entry['episode'])+' ep' if entry else 'None available'),650,510,580,'select')
             self.button('START',24,635,220,'start',True)
         else:
             for x,title,action in ((24,'PAUSE','pause'),(190,'RESUME','resume'),(356,'STOP','stop'),(522,'SAVE CHECKPOINT','save'),(760,'OPEN IN ARENA','arena')):
                 self.button(title,x,650,220 if action in ('save','arena') else 150,action)
             self.button('OPEN EXPERIMENT FILES',1000,650,256,'files')
         if self.confirm:
-            self.button('FINISH EPISODE & SAVE / STOP',235,405,390,'save_stop',True)
+            partial=self.snapshot and self.snapshot.metrics.get('partial_episode_recovery')
+            self.button('SAVE PARTIAL EPISODES / STOP' if partial else 'FINISH EPISODE & SAVE / STOP',235,405,390,'save_stop',True)
             self.button('STOP / KEEP IN MEMORY',650,405,350,'stop_memory')
             self.button('CANCEL / RESUME',470,457,340,'cancel_stop')
 
@@ -147,6 +156,9 @@ class FrontierView(FormView):
             elif action=='refresh':self.refresh=(25,100,500)[((25,100,500).index(self.refresh)+1)%3]
             elif action=='headless':self.headless=not self.headless
             elif action=='profiling':self.profiling=not self.profiling
+            elif action=='environments':self.environments=(1,2,4,8)[((1,2,4,8).index(self.environments)+1)%4]
+            elif action=='strategy':self.strategy=('auto','vectorized','multiprocessing')[(('auto','vectorized','multiprocessing').index(self.strategy)+1)%3]
+            elif action=='update_policy':self.update_policy='vector' if self.update_policy=='transition' else 'transition'
             elif action=='start':
                 config,architecture,execution=self.configuration()
                 if self.worker and self.worker.thread.is_alive() and self.snapshot and self.snapshot.status=='Running':
@@ -217,17 +229,17 @@ class FrontierView(FormView):
         def number(key,formatting='.3g'):
             value=metrics.get(key)
             return 'N/A' if value is None else format(value,formatting)
-        label(surface,f"{snap.status.upper()} / CPU / 1 ENVIRONMENT",(24,122),20,GREEN,False)
+        label(surface,f"{snap.status.upper()} / CPU / {metrics.get('environments',1)} ENVIRONMENTS / {metrics.get('strategy','vectorized').upper()} / UPDATES PER {metrics.get('update_policy','transition').upper()}",(24,122),17,GREEN,False)
         items=[f"Episodes {metrics['completed']:,} / {metrics['target']:,} ({metrics['progress']:.2f}%)",
             f"Mean100 {number('rolling_mean')} / median100 {number('rolling_median')} / best {number('best')}",
-            f"Steps {metrics['steps']:,} / {number('steps_per_second')} steps/s",
+            f"Steps {metrics['steps']:,} / {number('steps_per_second')} steps/s / active {metrics.get('active_environments',0)} / {metrics.get('worker_health','Healthy')}",
             f"{number('episodes_per_second')} episodes/s / {number('optimizer_updates_per_second')} optimizer updates/s",
-            f"Elapsed {number('elapsed')} s / ETA {number('eta')} s",
+            f"Elapsed {duration(metrics.get('elapsed'))} / "+('Completed' if snap.status=='Completed' else 'ETA estimate: '+duration(metrics.get('eta'))),
             f"Epsilon {number('epsilon')} / Huber TD loss {number('loss')}",
             f"Apples {metrics['apples']:,} / optimizer updates {metrics['optimizer_updates']:,}",
             f"Collisions {metrics['collisions']:,} ({metrics['collision_frequency']*100:.2f}%) / stagnations {metrics['stagnations']:,} ({metrics['stagnation_frequency']*100:.2f}%)",
             f"Episode length (recent100): mean {number('mean_length')} / median {number('median_length')}",
-            f"CPU {number('cpu_percent')}% (100%=one core) / RAM {metrics['ram_bytes']/1048576:.1f} MiB" if metrics['ram_bytes'] is not None else f"CPU {number('cpu_percent')}% / RAM N/A"]
+            f"CPU {number('cpu_percent','.1f')}% (100%=one core) / RAM {metrics['ram_bytes']/1048576:.1f} MiB" if metrics['ram_bytes'] is not None else f"CPU {number('cpu_percent','.1f')}% / RAM N/A"]
         for index,text in enumerate(items):label(surface,text,(24+(index//5)*630,160+(index%5)*29),16,TEXT,False)
         charts=snap.charts or {}
         plot=AnalysisChart()
@@ -249,7 +261,8 @@ class FrontierView(FormView):
     def draw(self,surface):
         surface.fill(BG)
         label(surface,'FRONTIER TRAINING',(24,15),27,GREEN,False)
-        label(surface,'CPU / 1 environment',(420,23),17,MUTED,False)
+        metrics=self.snapshot.metrics if self.snapshot and self.page!='config' else {}
+        label(surface,f"CPU / {metrics.get('environments',self.environments)} environments / {metrics.get('strategy',self.strategy)}",(420,23),17,MUTED,False)
         if self.page=='analysis':
             window=pygame.display.get_surface()
             width,height=window.get_size()
@@ -272,10 +285,10 @@ class FrontierView(FormView):
                         label(surface,f"{info['architecture_name']} / {info['encoder_name']} / {shape} / {info['parameter_count']:,} parameters",(24,163),13,GREEN,False)
                 except (ValueError,TypeError,OSError):pass
                 for title,x,y in (('MODEL NAME',24,185),('EPISODE BUDGET',24,260),('SEED',334,260),
-                    ('RECOVERY INTERVAL (EP)',650,260),('ROTATING SLOTS',960,260),('EXPERIMENT OUTPUT DIRECTORY',24,432)):
+                    ('RECOVERY INTERVAL (EP)',650,260),('ROTATING SLOTS',960,260),('EXPERIMENT OUTPUT DIRECTORY',24,442)):
                     label(surface,title,(x,y),14,MUTED,False)
-                label(surface,'A: Legacy11 / B: Distance19 / C: Binary CNN / D: Ordered CNN. Same DQN defaults; CPU / 1 environment.',(24,572),15,TEXT,False)
-                label(surface,'Resume restores saved learning settings and RNG streams; only the episode target may extend.',(24,602),14,MUTED,False)
+                label(surface,'A: Legacy11 / B: Distance19 / C: Binary CNN / D: Ordered CNN. One shared learner and replay.',(24,572),15,TEXT,False)
+                label(surface,'Vector-step updates use fewer updates per transition. Resume restores saved collection and learning settings.',(24,602),14,MUTED,False)
             self.draw_fields(surface)
         else:
             if self.cache is None or self.cache_key is not self.snapshot:

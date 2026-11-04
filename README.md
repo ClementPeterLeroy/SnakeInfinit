@@ -1,6 +1,6 @@
 # SNAKE INFINITE
 
-**v1.5.2 — Spatial Intelligence Foundations**
+**v1.5.3 — Parallel Frontier Training**
 
 A minimalist Python/Pygame arcade game with Classic, Arcade, five challenges,
 official startup branding, and local records. Built on the existing v1.0/v1.1
@@ -15,10 +15,26 @@ PyTorch remains optional for ordinary arcade play.
 
 ## Frontier and Legacy Training
 
+**Parallel collection:** choose **PARALLEL ENVIRONMENTS: 4** in Frontier
+Configuration, keep **STRATEGY: AUTO** (vectorized), choose an explicit update
+policy, then start. Default remains one environment with one update per transition.
+The faster **one update per vector step** option performs fewer optimizer updates
+per collected transition; its speed and learning budgets are not equivalent.
+
+Headers show actual environment count/strategy, update policy and worker health.
+Elapsed time and the smoothed recent-rate ETA use readable hours/minutes/days.
+Parallel pause/save restores partial episodes exactly in the tested matching
+runtime; stop releases collectors and resume reconstructs their traces.
+Frozen Arena evaluation remains independent of the training worker count.
+See [parallel usage, schedules and recovery](docs/parallel-training.md),
+[benchmark matrix and validation](docs/parallel-validation.md), and
+[v1.5.3 release notes](docs/releases/v1.5.3.md).
+
 Open **AI → Training Center**, then choose **LEGACY TRAINING** for the existing
 Configuration/Dashboard/Analysis tools or **FRONTIER TRAINING** for the headless
 workflow. Frontier offers four model configurations using the same CPU DQN and
-learning defaults. There is one environment, with optional profiling and no CUDA.
+learning defaults. Collection supports 1/2/4/8 environments, optional profiling,
+and CPU vectorized or Windows-spawn execution with one shared learner. No CUDA is required.
 
 | Configuration | Architecture / observation | Parameters |
 | --- | --- | ---: |
@@ -47,10 +63,11 @@ median, loss, measured throughput, ETA, optimizer-update counts, termination
 statistics and process CPU/RAM where measurable. No Snake board is rendered.
 
 **START / PAUSE / RESUME / STOP / SAVE CHECKPOINT** control the worker. Stop offers
-to finish the current episode and save a resumable boundary checkpoint, or retain
-the partial episode only in memory. Save while paused is pending until a boundary
-is reached. Final model and resumable checkpoint are automatic at the actual
-configured target. Use **OPEN EXPERIMENT FILES** to access the output directly.
+to save or retain progress in memory. Single-environment saves remain pending
+until an episode boundary. Parallel saves capture the current quiescent vector
+boundary, including partial episodes. Final model and resumable checkpoint are
+automatic at the actual configured target. Use **OPEN EXPERIMENT FILES** to access
+the output directly.
 
 Source runs save Frontier experiments visibly inside this repository:
 
@@ -66,9 +83,11 @@ experiments/frontier/<experiment-id>/
 Lightweight models at 1,000/3,000/5,000/10,000 episodes and the actual final target
 are suitable for GitHub sharing with their JSON metadata. Rotating recovery
 defaults to every 1,000 episodes with two retained slots. Checkpoints include
-weights, target, Adam, replay, counters and owned RNG streams; resume is exact
-at completed-episode boundaries under the same runtime. Partial episodes are not
-serialized. Existing baseline checkpoints remain unchanged and readable.
+weights, target, Adam, replay, counters and owned RNG streams. Resume is exact at
+the supported checkpoint boundary in a matching runtime. Parallel checkpoints
+retain partial seed/action traces; original single-environment checkpoints retain
+their completed-episode boundary convention. Existing baseline checkpoints remain
+unchanged and readable.
 Custom settings profiles use their own Frontier directory; the output is editable.
 
 A matched 100,000-step comparison measured **587.7 steps/s Legacy vs 634.1 steps/s
@@ -746,6 +765,5 @@ target synchronization, gradient clipping, numerical failures, exact resumable
 checkpoints, worker control/shutdown and frozen Arena evaluation. End-to-end
 validation evaluates the initial and reloaded trained model on the same 20 seeds.
 
-Next: **v1.5.3 — Parallel Frontier Training**, then **v1.5.4 — CUDA & Frontier
-Optimization**, **v1.5.5 — Benchmark Laboratory**, and **v1.6.x — Neural Intelligence
+Next: **v1.5.4 — CUDA & Frontier Optimization**, **v1.5.5 — Benchmark Laboratory**, and **v1.6.x — Neural Intelligence
 Research**. See the [preserved research roadmap](docs/ai-research.md#roadmap).

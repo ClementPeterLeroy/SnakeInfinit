@@ -1,0 +1,97 @@
+{
+  "format_version": 2,
+  "application_version": "v1.5.3",
+  "created_utc": "2026-11-02T16:19:13.720243+00:00",
+  "architecture": {
+    "configuration_id": "C",
+    "hidden_sizes": [],
+    "seed": 0,
+    "architecture_id": "cnn_spatial_compact",
+    "encoder_id": "snake-spatial-binary-v1",
+    "schema_version": 1
+  },
+  "features": [
+    "body",
+    "head",
+    "food",
+    "heading U,D,L,R"
+  ],
+  "actions": [
+    "Straight",
+    "Turn left",
+    "Turn right"
+  ],
+  "weights_file": "snake_cnn_binary_ep001000_model.pt",
+  "sha256": "79d23058b230d92b1df29466b5f366680fb52a00ba75587c3b8ea8064a92a7cb",
+  "manual_edits": [],
+  "supervised_demo_steps": 0,
+  "reinforcement_learning": true,
+  "model_configuration_id": "C",
+  "architecture_id": "cnn_spatial_compact",
+  "encoder_id": "snake-spatial-binary-v1",
+  "architecture_name": "Compact spatial CNN",
+  "encoder_name": "Binary body occupancy",
+  "network_family": "CNN",
+  "architecture_schema_version": 1,
+  "encoder_schema_version": 1,
+  "architecture_parameters": {
+    "channels": [
+      3,
+      32,
+      64,
+      64
+    ],
+    "kernel_size": 3,
+    "padding": 1,
+    "strides": [
+      2,
+      2,
+      2
+    ],
+    "flatten": 1024,
+    "heading": 4,
+    "dense_hidden": 128,
+    "activation": "relu",
+    "outputs": 3
+  },
+  "encoder_configuration": {
+    "board_width": 25,
+    "board_height": 25,
+    "normalization": "Body excluding head = 1; empty = 0"
+  },
+  "input_shape": {
+    "spatial": [
+      3,
+      25,
+      25
+    ],
+    "heading": [
+      4
+    ]
+  },
+  "parameter_count": 188419,
+  "experiment_id": "a75e4a0b907147409780b91dba189ce7",
+  "model_name": "Snake DQN Frontier CNN",
+  "observation_encoder": "snake-spatial-binary-v1",
+  "episode": 1000,
+  "environment_steps": 68647,
+  "optimizer_updates": 68584,
+  "training_elapsed_seconds": 1686.050109499949,
+  "session_wall_seconds": 1694.0566988000646,
+  "collection_configuration": {
+    "refresh_episodes": 100,
+    "headless": true,
+    "recovery_interval": 1000,
+    "recovery_slots": 2,
+    "milestones": [
+      1000,
+      3000,
+      5000,
+      10000
+    ],
+    "profiling": false,
+    "environments": 2,
+    "strategy": "auto",
+    "update_policy": "transition"
+  }
+}

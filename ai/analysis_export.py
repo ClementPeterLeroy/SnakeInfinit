@@ -8,7 +8,7 @@ import unicodedata
 from ai.analysis_stats import groups,select
 
 RAW_FIELDS=('model_id','model_name','dataset_type','run_id','episode','score','length','reward','reason',
-            'cumulative_steps','epsilon','elapsed','apples','seed')
+            'cumulative_steps','epsilon','elapsed','apples','seed','environment_id','local_sequence')
 GROUP_FIELDS=('model_id','model_name','dataset_type','episode_start','episode_end','sample_count',
               'minimum','q1','median','mean','q3','maximum','stddev')
 
@@ -61,7 +61,7 @@ def export_csv(path,datasets,kind='raw',start=None,end=None,size=100,alignment='
     path.parent.mkdir(parents=True,exist_ok=True)
     metadata=dict(schema_version=1,datasets=[dict(id=d.identifier,name=d.name,kind=d.kind,limitations=d.limitations,
         checkpoint=d.checkpoint,checkpoint_episode=d.checkpoint_episode,model_identity=d.model_identity,
-        architecture=d.architecture,parameter_count=d.parameter_count) for d in datasets],
+        architecture=d.architecture,parameter_count=d.parameter_count,configuration=d.configuration) for d in datasets],
         selected_range=[start,end],range_unit=alignment,grouping=size,alignment=alignment,
         quartiles='linear/type 7: h=(n-1)*p',standard_deviation='population, ddof=0',whiskers='true minimum/maximum')
     created=False

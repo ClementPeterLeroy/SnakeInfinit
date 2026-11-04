@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "artifacts": [
+    {
+      "kind": "model",
+      "episode": 1000,
+      "path": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\a75e4a0b907147409780b91dba189ce7\\models\\snake_cnn_binary_ep001000_model.pt",
+      "library": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\a75e4a0b907147409780b91dba189ce7\\checkpoints\\a75e4a0b907147409780b91dba189ce7\\episode-0001000-adeefb97"
+    },
+    {
+      "kind": "recovery",
+      "episode": 1000,
+      "path": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\a75e4a0b907147409780b91dba189ce7\\checkpoints\\a75e4a0b907147409780b91dba189ce7\\recovery-0001000-14e0515f",
+      "model": null
+    },
+    {
+      "kind": "recovery",
+      "episode": 2000,
+      "path": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\a75e4a0b907147409780b91dba189ce7\\checkpoints\\a75e4a0b907147409780b91dba189ce7\\recovery-0002000-0f325225",
+      "model": null
+    },
+    {
+      "kind": "recovery",
+      "episode": 2843,
+      "path": "C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\a75e4a0b907147409780b91dba189ce7\\checkpoints\\a75e4a0b907147409780b91dba189ce7\\recovery-0002843-8af4a90e",
+      "model": null
+    }
+  ]
+}

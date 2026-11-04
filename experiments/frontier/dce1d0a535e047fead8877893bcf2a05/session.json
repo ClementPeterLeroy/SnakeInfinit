@@ -1,0 +1,94 @@
+{
+  "status": "Stopped",
+  "message": "Worker closed at a safe step; last message: Resumable checkpoint saved: C:\\Users\\cleme\\OneDrive\\Documents\\Python Scripts\\local\\SnakeInfinit\\experiments\\frontier\\dce1d0a535e047fead8877893bcf2a05\\checkpoints\\dce1d0a535e047fead8877893bcf2a05\\recovery-0000110-a0851027",
+  "profiling": {
+    "environment_step": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "state_encoding": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "action_selection": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "neural_inference": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "replay_sampling": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "forward_backward": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "optimizer_update": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "metrics_aggregation": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "checkpoint_serialization": {
+      "seconds": 0.0,
+      "calls": 0
+    },
+    "ui_synchronization": {
+      "seconds": 0.0,
+      "calls": 0
+    }
+  },
+  "metrics": {
+    "episode": 110,
+    "completed": 110,
+    "score": 1,
+    "best": 2,
+    "average": 0.23,
+    "epsilon": 0.885848,
+    "loss": 0.20878943800926208,
+    "steps": 12016,
+    "apples": 24,
+    "collisions": 109,
+    "stagnations": 1,
+    "elapsed": 290.21455520007294,
+    "gradient_norm": 0.9085153937339783,
+    "last_reason": "wall_collision",
+    "average_length": 106.57272727272728,
+    "reward_total": -973.8199999999055,
+    "parameter_count": 188419,
+    "collision_frequency": 0.990909090909091,
+    "stagnation_frequency": 0.00909090909090909,
+    "apples_per_step": 0.0019973368841544607,
+    "environments": 4,
+    "active_environments": 4,
+    "strategy": "vectorized",
+    "update_policy": "transition",
+    "optimizer_updates": 11953,
+    "vector_steps": 3004,
+    "worker_health": "Closed",
+    "updates_per_transition": 0.9947569906790945,
+    "target": 10000,
+    "progress": 1.1,
+    "rolling_mean": 0.23,
+    "rolling_median": 0.0,
+    "mean_length": 109.37,
+    "median_length": 84.0,
+    "steps_per_second": 41.40385030556517,
+    "episodes_per_second": 0.3790299212393616,
+    "optimizer_updates_per_second": 41.18676953249172,
+    "session_wall_seconds": 302.09787469997536,
+    "eta": 13192.156416604123,
+    "partial_episode_recovery": true,
+    "cpu_percent": null,
+    "ram_bytes": 389607424,
+    "peak_ram_bytes": 446369792,
+    "inferences_per_second": null
+  },
+  "optimizer_updates": 11953,
+  "wall_seconds": 302.1063320999965
+}

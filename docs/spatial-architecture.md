@@ -1,5 +1,10 @@
 # Spatial Intelligence Foundations — v1.5.2
 
+v1.5.3 adds [parallel collection and partial-episode recovery](parallel-training.md)
+around these unchanged model/encoder definitions. The single-environment boundary
+convention below remains the historical path; parallel checkpoints extend it with
+explicit collector state.
+
 The Pygame-free game engine remains in `core/`. Observation encoders read immutable
 game snapshots; models, codecs and DQN belong to `ai/`. Registry metadata imports
 without Torch. Constructors load Torch only when a neural model is requested.
